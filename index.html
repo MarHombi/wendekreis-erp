@@ -675,7 +675,8 @@ const MS_DEFAULT_PATH = '01 Firma/00 Wendekreis/03 Firm/ERP';
 const MS_SCOPES = 'openid profile offline_access https://graph.microsoft.com/Files.ReadWrite';
 const lsGet = k => { try { return localStorage.getItem(k) || ''; } catch(e) { return ''; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch(e) {} };
-function msCfg(){ return { clientId: lsGet('wk-ms-client'), tenant: lsGet('wk-ms-tenant') || 'organizations', path: (lsGet('wk-ms-path') || MS_DEFAULT_PATH).replace(/^\/+|\/+$/g,'') }; }
+const MS_CLIENT = '5ce4acbd-7baa-47b1-8711-a77c9bca33fc', MS_TENANT = 'e4589863-af2e-450f-9af3-3f5182f903c6';
+function msCfg(){ return { clientId: lsGet('wk-ms-client') || MS_CLIENT, tenant: lsGet('wk-ms-tenant') || MS_TENANT, path: (lsGet('wk-ms-path') || MS_DEFAULT_PATH).replace(/^\/+|\/+$/g,'') }; }
 const redirectUri = () => location.origin + location.pathname;
 const b64url = buf => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 const rnd = n => b64url(crypto.getRandomValues(new Uint8Array(n)));
@@ -751,7 +752,7 @@ function setupView(){
   const c = msCfg();
   return `<div class="card setup"><h3 style="margin:0 0 4px">wendekreis ERP mit Microsoft 365 verbinden</h3><p class="muted" style="margin:0">Einmalige Einrichtung. Die IDs findest du in Microsoft Entra unter „App-Registrierungen“ → „wendekreis ERP“ → „Übersicht“.</p>
   <div class="form"><div class="fld"><label for="ms_client">Anwendungs-ID (Client)</label><input id="ms_client" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.clientId)}" placeholder="z. B. 1a2b3c4d-…"></div>
-  <div class="fld"><label for="ms_tenant">Verzeichnis-ID (Mandant)</label><input id="ms_tenant" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.tenant==='organizations'?'':c.tenant)}" placeholder="z. B. 9f8e7d6c-…"></div>
+  <div class="fld"><label for="ms_tenant">Verzeichnis-ID (Mandant)</label><input id="ms_tenant" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.tenant)}" placeholder="z. B. 9f8e7d6c-…"></div>
   <div class="fld"><label for="ms_path">Ordner im OneDrive</label><input id="ms_path" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" value="${esc(c.path)}"></div></div>
   <button class="btn" data-act="ms-setup-save">Speichern und anmelden</button></div>`;
 }
