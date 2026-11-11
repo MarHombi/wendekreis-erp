@@ -6,7 +6,7 @@
 <title>wendekreis ERP</title>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="wendekreis">
 <meta name="theme-color" content="#0f2b36">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -160,6 +160,12 @@ textarea{resize:vertical}
 .doc-wrap{background:var(--surface-2);padding:16px;border-radius:var(--r);overflow-x:auto}
 .set-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px;align-items:start}
 .tabbar{display:none}
+#ask{z-index:55;align-items:center}
+#ask .dlg{max-width:520px}
+.vers{margin:0 0 14px;padding:10px 14px;border:1px solid var(--line);border-radius:var(--r);background:var(--surface-2)}
+.vers h3{margin:0 0 6px;font-size:13px}
+.vers li[aria-current="true"] .t{font-weight:600}
+.lockinfo{margin:0 0 14px}
 .setup{max-width:520px;margin:0 auto;text-align:left}
 .setup .form{margin:12px 0 16px}
 @media (max-width:820px){
@@ -203,7 +209,15 @@ textarea{resize:vertical}
   .postab td:first-child{grid-column:1 / -1}
   .postab .p-sum{grid-column:1 / 4;padding-top:0;text-align:left!important;font-weight:600}
   .toast{bottom:calc(76px + env(safe-area-inset-bottom,0px))}
-  body:has(#modal:not([hidden])) .tabbar{display:none}
+  body:has(#modal:not([hidden])) .tabbar,body:has(#ask:not([hidden])) .tabbar{display:none}
+  .app{min-height:100vh;min-height:100dvh}
+  .top{padding:10px 16px}
+  .dlg-h{padding-top:14px}
+  .dlg,.dlg.wide{min-height:100vh;min-height:100dvh}
+  input[type=date]{-webkit-appearance:none;appearance:none;display:block;min-height:44px;text-align:left;width:100%;max-width:100%}
+  input[type=date]::-webkit-date-and-time-value{text-align:left}
+  .fld input,.fld select,.fld textarea{max-width:100%}
+  #ask .dlg{min-height:0!important;border-radius:12px;align-self:center}
   body:has(#modal:not([hidden])) .toast{bottom:calc(84px + env(safe-area-inset-bottom,0px))}
   .head .kpis{min-width:0!important;width:100%}
 }
@@ -240,6 +254,7 @@ textarea{resize:vertical}
 </div>
 <nav class="tabbar" id="tabbar" aria-label="Schnellzugriff"></nav>
 <div class="modal" id="modal" hidden></div>
+<div class="modal" id="ask" hidden></div>
 <div class="toast" id="toast" hidden></div>
 <input type="file" id="importFile" accept=".json,application/json" hidden>
 
@@ -275,8 +290,11 @@ const ex = r => r && r.beispiel ? '<span class="tag-ex">Beispiel</span>' : '';
 const chip = (t,cls='') => t ? `<span class="chip ${cls}">${esc(t)}</span>` : '';
 const sumPos = p => (p||[]).reduce((a,x) => a + (Number(x.menge)||0)*(Number(x.preis)||0), 0);
 const tot = r => { const n = sumPos(r.positionen); const u = r.ustSatz === 0 || r.ustSatz === '0' ? 0 : (Number(r.ustSatz) || 19); return {netto:n, ustSatz:u, ust:n*u/100, brutto:n*(1+u/100)}; };
-const rStatus = r => (r.status === 'Gestellt' && r.faellig && r.faellig < today()) ? 'Überfällig' : (r.status || 'Entwurf');
-const STATUS_CLS = {Entwurf:'',Versendet:'info',Gestellt:'info',Angenommen:'good',Bezahlt:'good',Gewonnen:'good',Aktiv:'good',Abgelehnt:'crit',Verloren:'crit',Überfällig:'crit',Storniert:'',Abgelaufen:'warn',Pausiert:'warn',Geplant:'info',Abgeschlossen:'',Hoch:'crit',Normal:'',Niedrig:''};
+const rArt = r => r.art || 'rechnung';
+const umsatzRel = r => rArt(r)==='rechnung' ? ['Gestellt','Bezahlt'].includes(r.status) : (rArt(r)==='korrektur' && r.status!=='Entwurf');
+function offen(r){ if (rArt(r)!=='rechnung' || r.status!=='Gestellt') return 0; const k = S.rechnungen.filter(x=>rArt(x)==='korrektur' && x.bezugId===r.id && x.status!=='Entwurf').reduce((a,x)=>a+tot(x).brutto,0); return Math.max(0, Math.round((tot(r).brutto + k)*100)/100); }
+const rStatus = r => rArt(r)==='storno' ? (r.status==='Entwurf'?'Entwurf':'Storno') : rArt(r)==='korrektur' ? (r.status==='Entwurf'?'Entwurf':'Korrektur') : (r.status === 'Gestellt' && r.faellig && r.faellig < today() && offen(r) > 0) ? 'Überfällig' : (r.status || 'Entwurf');
+const STATUS_CLS = {Storno:'',Korrektur:'info',Ersetzt:'',Entwurf:'',Versendet:'info',Gestellt:'info',Angenommen:'good',Bezahlt:'good',Gewonnen:'good',Aktiv:'good',Abgelehnt:'crit',Verloren:'crit',Überfällig:'crit',Storniert:'',Abgelaufen:'warn',Pausiert:'warn',Geplant:'info',Abgeschlossen:'',Hoch:'crit',Normal:'',Niedrig:''};
 const sChip = s => chip(s, STATUS_CLS[s] || '');
 const kname = k => k ? [k.vorname,k.nachname].filter(Boolean).join(' ') : '';
 const fname = id => { const f = byId('firmen',id); return f ? f.name : ''; };
@@ -297,12 +315,12 @@ const ENT = {
       F('volumen','Volumen netto €',{t:'money',half:1}),F('wahrscheinlichkeit','Wahrscheinlichkeit %',{t:'number',half:1,def:25}),F('abschluss','Erwarteter Abschluss',{t:'date',half:1}),F('naechsterSchritt','Nächster Schritt',{half:1}),F('verlustgrund','Grund bei Verlust',{}),F('notizen','Notizen',{t:'textarea'})],
     cols:[['Titel',r=>`<strong>${esc(r.titel)}</strong>${ex(r)}`],['Firma',r=>esc(fname(r.firmaId))],['Phase',r=>sChip(r.phase)],['Volumen',r=>eur(r.volumen),1],['Wahrsch.',r=>num(r.wahrscheinlichkeit)+' %',1],['Abschluss',r=>fmtD(r.abschluss)],['Nächster Schritt',r=>esc(r.naechsterSchritt)]]},
   angebote:{label:'Angebote',one:'Angebot',title:r=>`${r.nummer||''} ${r.titel||''}`.trim(),sort:(a,b)=>(b.datum||'').localeCompare(a.datum||'')||(b.nummer||'').localeCompare(a.nummer||''),
-    fields:[F('nummer','Angebotsnummer',{half:1}),F('status','Status',{t:'select',o:['Entwurf','Versendet','Angenommen','Abgelehnt','Abgelaufen'],half:1,def:'Entwurf'}),F('titel','Titel / Betreff',{req:1}),
+    fields:[F('nummer','Angebotsnummer',{half:1}),F('status','Status',{t:'select',o:['Entwurf','Versendet','Angenommen','Abgelehnt','Abgelaufen','Ersetzt'],half:1,def:'Entwurf'}),F('titel','Titel / Betreff',{req:1}),F('kurztitel','Kurztitel für Ordner und Dateiname',{ph:'z. B. Repositionierung ELU'}),F('aenderungsgrund','Änderungsgrund dieser Version',{show:r=>angVer(r)>0}),
       F('firmaId','Firma',{t:'ref',ref:'firmen',half:1}),F('kontaktId','Ansprechpartner',{t:'ref',ref:'kontakte',half:1}),F('chanceId','Verkaufschance',{t:'ref',ref:'chancen',half:1}),F('sprache','Sprache',{t:'select',o:['DE','EN'],half:1,def:'DE'}),
       F('datum','Datum',{t:'date',half:1,def:'today'}),F('gueltigBis','Gültig bis',{t:'date',half:1,def:'+30'}),F('einleitung','Einleitungstext',{t:'textarea',rows:3}),F('positionen','Positionen',{t:'positions'}),
       F('ustSatz','USt-Satz %',{t:'select',o:['19','7','0'],half:1,def:'19',num:1}),F('schluss','Schlusstext / Konditionen',{t:'textarea',rows:3}),F('notizen','Interne Notizen',{t:'textarea',rows:2})],
-    cols:[['Nr.',r=>esc(r.nummer)],['Titel',r=>`<strong>${esc(r.titel)}</strong>${ex(r)}`],['Firma',r=>esc(fname(r.firmaId))],['Datum',r=>fmtD(r.datum)],['Status',r=>sChip(r.status)],['Netto',r=>eur(tot(r).netto),1]],
-    filters:['Entwurf','Versendet','Angenommen','Abgelehnt','Abgelaufen'], fkey:'status'},
+    cols:[['Nr.',r=>esc(r.nummer)],['Titel',r=>`<strong>${esc(r.titel)}</strong>${ex(r)}${angVersions(r).length>1?` <span class="muted">· ${angVersions(r).length} Versionen</span>`:''}`],['Firma',r=>esc(fname(r.firmaId))],['Datum',r=>fmtD(r.datum)],['Status',r=>sChip(r.status)],['Netto',r=>eur(tot(r).netto),1]],
+    filters:['Entwurf','Versendet','Angenommen','Abgelehnt','Abgelaufen','Ersetzt'], fkey:'status'},
   projekte:{label:'Projekte',one:'Projekt',title:r=>r.name||'(ohne Namen)',sort:(a,b)=>(b.start||'').localeCompare(a.start||''),detail:true,
     fields:[F('name','Projektname',{req:1}),F('firmaId','Kunde',{t:'ref',ref:'firmen',half:1}),F('angebotId','Angebot',{t:'ref',ref:'angebote',half:1}),F('status','Status',{t:'select',o:['Geplant','Aktiv','Pausiert','Abgeschlossen'],half:1,def:'Geplant'}),
       F('abrechnung','Abrechnung',{t:'select',o:['Nach Aufwand','Festpreis','Retainer'],half:1,def:'Nach Aufwand'}),F('tagessatz','Tagessatz €',{t:'money',half:1}),F('poNummer','Bestellnummer (PO)',{half:1}),
@@ -313,12 +331,12 @@ const ENT = {
     fields:[F('datum','Datum',{t:'date',half:1,def:'today',req:1}),F('projektId','Projekt',{t:'ref',ref:'projekte',half:1,req:1}),F('stunden','Stunden',{t:'number',half:1,req:1}),F('abrechenbar','Abrechenbar',{t:'check',half:1,def:true}),F('taetigkeit','Tätigkeit',{t:'textarea',rows:2})],
     cols:[['Datum',r=>fmtD(r.datum)],['Projekt',r=>esc((byId('projekte',r.projektId)||{}).name)+ex(r)],['Tätigkeit',r=>esc(r.taetigkeit)],['Stunden',r=>num(r.stunden,2),1],['Status',r=>r.rechnungId?chip('abgerechnet','good'):r.abrechenbar===false?chip('nicht abrechenbar'):chip('offen','info')]]},
   rechnungen:{label:'Rechnungen',one:'Rechnung',title:r=>`${r.nummer||''} ${r.titel||''}`.trim(),sort:(a,b)=>(b.datum||'').localeCompare(a.datum||'')||(b.nummer||'').localeCompare(a.nummer||''),
-    fields:[F('nummer','Rechnungsnummer',{half:1}),F('status','Status',{t:'select',o:['Entwurf','Gestellt','Bezahlt','Storniert'],half:1,def:'Entwurf'}),F('titel','Betreff',{req:1}),
+    fields:[F('nummer','Rechnungsnummer',{half:1}),F('status','Status',{t:'select',o:['Entwurf','Gestellt','Bezahlt','Storniert'],half:1,def:'Entwurf'}),F('titel','Betreff',{req:1}),F('grund','Grund der Stornierung bzw. Korrektur',{t:'textarea',rows:2,show:r=>rArt(r)!=='rechnung'}),
       F('firmaId','Kunde',{t:'ref',ref:'firmen',half:1,req:1}),F('kontaktId','Ansprechpartner',{t:'ref',ref:'kontakte',half:1}),F('projektId','Projekt',{t:'ref',ref:'projekte',half:1}),F('sprache','Sprache',{t:'select',o:['DE','EN'],half:1,def:'DE'}),
       F('datum','Rechnungsdatum',{t:'date',half:1,def:'today'}),F('faellig','Fällig am',{t:'date',half:1}),F('leistungVon','Leistung von',{t:'date',half:1}),F('leistungBis','Leistung bis',{t:'date',half:1}),
       F('positionen','Positionen',{t:'positions'}),F('ustSatz','USt-Satz %',{t:'select',o:['19','7','0'],half:1,def:'19',num:1}),F('bezahltAm','Bezahlt am',{t:'date',half:1}),F('hinweis','Hinweistext auf der Rechnung',{t:'textarea',rows:2}),F('notizen','Interne Notizen',{t:'textarea',rows:2})],
-    cols:[['Nr.',r=>esc(r.nummer)],['Betreff',r=>`<strong>${esc(r.titel)}</strong>${ex(r)}`],['Kunde',r=>esc(fname(r.firmaId))],['Datum',r=>fmtD(r.datum)],['Fällig',r=>fmtD(r.faellig)],['Status',r=>sChip(rStatus(r))],['Brutto',r=>eur(tot(r).brutto),1]],
-    filters:['Entwurf','Gestellt','Überfällig','Bezahlt','Storniert'], fkey:'__rstatus'},
+    cols:[['Nr.',r=>esc(r.nummer)],['Betreff',r=>`<strong>${esc(r.titel)}</strong>${ex(r)}`],['Kunde',r=>esc(fname(r.firmaId))],['Datum',r=>fmtD(r.datum)],['Fällig',r=>rArt(r)==='rechnung'?fmtD(r.faellig):''],['Status',r=>sChip(rStatus(r))],['Brutto',r=>eur(tot(r).brutto),1],['Offen',r=>offen(r)?eur(offen(r)):'',1]],
+    filters:['Entwurf','Gestellt','Überfällig','Bezahlt','Storniert','Storno','Korrektur'], fkey:'__rstatus'},
   ausgaben:{label:'Ausgaben',one:'Ausgabe',title:r=>`${fmtD(r.datum)} · ${r.lieferant||r.beschreibung||''}`,sort:(a,b)=>(b.datum||'').localeCompare(a.datum||''),
     fields:[F('datum','Datum',{t:'date',half:1,def:'today'}),F('kategorie','Kategorie',{t:'select',o:['Reise','Hotel','Verpflegung','Software','Hardware','Büro','Subunternehmer','Weiterbildung','Marketing','Sonstiges'],half:1}),
       F('lieferant','Lieferant / Empfänger',{half:1,req:1}),F('beschreibung','Beschreibung',{half:1}),F('netto','Betrag netto €',{t:'money',half:1,req:1}),F('ustSatz','USt-Satz %',{t:'select',o:['19','7','0'],half:1,def:'19',num:1}),
@@ -387,11 +405,12 @@ function listView(col, q){
   const E = ENT[col];
   let rows = [...S[col]];
   if (filter && E.fkey) rows = rows.filter(r => E.fkey==='__rstatus' ? rStatus(r)===filter : E.fkey==='__done' ? (filter==='Erledigt' ? !!r.erledigt : !r.erledigt) : r[E.fkey]===filter);
+  if (col==='angebote' && filter!=='Ersetzt') rows = rows.filter(r => r.status!=='Ersetzt');
   if (q) rows = rows.filter(r => E.cols.map(c => c[1](r)).join(' ').replace(/<[^>]+>/g,' ').toLowerCase().includes(q) || (r.notizen||'').toLowerCase().includes(q));
   rows.sort(E.sort);
   const fl = E.filters ? `<div class="filters" role="group" aria-label="Filter"><button data-act="filter" data-f="" aria-pressed="${!filter}">Alle</button>${E.filters.map(f=>`<button data-act="filter" data-f="${esc(f)}" aria-pressed="${filter===f}">${esc(f)}</button>`).join('')}</div>` : '';
   let sum = '';
-  if (col==='rechnungen') { const o = rows.filter(r=>['Gestellt','Überfällig'].includes(rStatus(r))); sum = `<span class="muted">${rows.length} Rechnungen · offen ${eur(o.reduce((a,r)=>a+tot(r).brutto,0))}</span>`; }
+  if (col==='rechnungen') { sum = `<span class="muted">${rows.length} Belege · offen ${eur(rows.reduce((a,r)=>a+offen(r),0))}</span>`; }
   if (col==='zeiten') { const h = rows.reduce((a,r)=>a+(Number(r.stunden)||0),0); sum = `<span class="muted">${num(h,2)} Std. = ${num(h/STD(),1)} PT</span>`; }
   if (col==='ausgaben') sum = `<span class="muted">Summe netto ${eur(rows.reduce((a,r)=>a+(Number(r.netto)||0),0))}</span>`;
   if (col==='chancen') sum = `<span class="muted">gewichtet ${eur(rows.filter(isOpen).reduce((a,c)=>a+(Number(c.volumen)||0)*(Number(c.wahrscheinlichkeit)||0)/100,0))}</span>`;
@@ -410,9 +429,9 @@ function dashboard(){
   const t = today(), y = t.slice(0,4), m = t.slice(0,7);
   const openCh = S.chancen.filter(isOpen);
   const weighted = openCh.reduce((a,c)=>a+(Number(c.volumen)||0)*(Number(c.wahrscheinlichkeit)||0)/100,0);
-  const openR = S.rechnungen.filter(r=>['Gestellt','Überfällig'].includes(rStatus(r)));
+  const openR = S.rechnungen.filter(r=>offen(r)>0);
   const overdue = S.rechnungen.filter(r=>rStatus(r)==='Überfällig');
-  const umsatz = S.rechnungen.filter(r=>['Gestellt','Bezahlt'].includes(r.status) && (r.datum||'').startsWith(y)).reduce((a,r)=>a+tot(r).netto,0);
+  const umsatz = S.rechnungen.filter(r=>umsatzRel(r) && (r.datum||'').startsWith(y)).reduce((a,r)=>a+tot(r).netto,0);
   const stdM = S.zeiten.filter(z=>(z.datum||'').startsWith(m)).reduce((a,z)=>a+(Number(z.stunden)||0),0);
   const unbilled = S.zeiten.filter(z=>z.abrechenbar!==false && !z.rechnungId);
   const unbilledVal = unbilled.reduce((a,z)=>{ const p=byId('projekte',z.projektId); return a+(Number(z.stunden)||0)/STD()*(Number(p&&p.tagessatz)||0); },0);
@@ -421,11 +440,11 @@ function dashboard(){
   const acts = [...S.aktivitaeten].sort(ENT.aktivitaeten.sort).slice(0,6);
   const fristen = S.dokumente.filter(d=>d.gueltigBis && d.gueltigBis<=addDays(t,60)).sort((a,b)=>a.gueltigBis.localeCompare(b.gueltigBis));
   const kpi = (l,v,s) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;
-  return `<div class="kpis">${kpi('Pipeline gewichtet',eur(weighted),`${openCh.length} offene Chancen · ungewichtet ${eur(openCh.reduce((a,c)=>a+(Number(c.volumen)||0),0))}`)}${kpi('Offene Rechnungen',eur(openR.reduce((a,r)=>a+tot(r).brutto,0)),overdue.length?`<span style="color:var(--crit);font-weight:600">${overdue.length} überfällig</span>`:`${openR.length} gestellt, keine überfällig`)}${kpi(`Umsatz ${y} netto`,eur(umsatz),'aus gestellten und bezahlten Rechnungen')}${kpi('Noch nicht abgerechnet',eur(unbilledVal),`${num(unbilled.reduce((a,z)=>a+(Number(z.stunden)||0),0),1)} Std. · diesen Monat ${num(stdM,1)} Std.`)}</div>
+  return `<div class="kpis">${kpi('Pipeline gewichtet',eur(weighted),`${openCh.length} offene Chancen · ungewichtet ${eur(openCh.reduce((a,c)=>a+(Number(c.volumen)||0),0))}`)}${kpi('Offene Rechnungen',eur(openR.reduce((a,r)=>a+offen(r),0)),overdue.length?`<span style="color:var(--crit);font-weight:600">${overdue.length} überfällig</span>`:`${openR.length} gestellt, keine überfällig`)}${kpi(`Umsatz ${y} netto`,eur(umsatz),'aus gestellten und bezahlten Rechnungen')}${kpi('Noch nicht abgerechnet',eur(unbilledVal),`${num(unbilled.reduce((a,z)=>a+(Number(z.stunden)||0),0),1)} Std. · diesen Monat ${num(stdM,1)} Std.`)}</div>
   <div class="grid2">
   ${sec('Aufgaben, fällig in 7 Tagen','aufgaben',tasks,a=>`<li data-act="open" data-col="aufgaben" data-id="${a.id}"><span class="t"><input type="checkbox" aria-label="Erledigt" data-act="toggle" data-id="${a.id}"> ${esc(a.titel)}${ex(a)}</span><span class="m"${a.faellig&&a.faellig<t?' style="color:var(--crit);font-weight:600"':''}>${fmtD(a.faellig)}</span></li>`)}
   ${sec('Abschlüsse in den nächsten 45 Tagen','chancen',soon,c=>li('chancen',c,`${esc(c.titel)}${ex(c)}<br><span class="muted">${esc(fname(c.firmaId))} · ${esc(c.phase||'Lead')}</span>`,`${eur(c.volumen)}<br>${fmtD(c.abschluss)}`))}
-  ${sec('Offene Rechnungen',null,openR.sort((a,b)=>(a.faellig||'').localeCompare(b.faellig||'')),r=>li('rechnungen',r,`${esc(r.nummer)} · ${esc(fname(r.firmaId))}${ex(r)}`,`${eur(tot(r).brutto)}<br>${rStatus(r)==='Überfällig'?'<span style="color:var(--crit);font-weight:600">überfällig</span>':'fällig '+fmtD(r.faellig)}`))}
+  ${sec('Offene Rechnungen',null,openR.sort((a,b)=>(a.faellig||'').localeCompare(b.faellig||'')),r=>li('rechnungen',r,`${esc(r.nummer)} · ${esc(fname(r.firmaId))}${ex(r)}`,`${eur(offen(r))}<br>${rStatus(r)==='Überfällig'?'<span style="color:var(--crit);font-weight:600">überfällig</span>':'fällig '+fmtD(r.faellig)}`))}
   ${sec('Letzte Aktivitäten','aktivitaeten',acts,a=>li('aktivitaeten',a,`<b>${esc(a.typ||'Notiz')}</b> · ${esc(fname(a.firmaId))}${ex(a)}<br><span class="muted">${esc((a.text||'').slice(0,90))}</span>`,fmtD(a.datum)))}
   ${fristen.length?sec('Vertragsfristen in 60 Tagen',null,fristen,d=>li('dokumente',d,`${esc(d.titel)} · ${esc(fname(d.firmaId))}`,fmtD(d.gueltigBis))):''}
   </div>`;
@@ -460,9 +479,9 @@ function firmaDetail(f){
   const dk = S.dokumente.filter(x=>x.firmaId===id).sort(ENT.dokumente.sort);
   const au = S.aufgaben.filter(x=>x.firmaId===id && !x.erledigt).sort(ENT.aufgaben.sort);
   const ak = S.aktivitaeten.filter(x=>x.firmaId===id).sort(ENT.aktivitaeten.sort);
-  const umsatz = re.filter(r=>['Gestellt','Bezahlt'].includes(r.status)).reduce((a,r)=>a+tot(r).netto,0);
+  const umsatz = re.filter(umsatzRel).reduce((a,r)=>a+tot(r).netto,0);
   const addr = [f.strasse,[f.plz,f.ort].filter(Boolean).join(' '),f.land&&f.land!=='Deutschland'?f.land:''].filter(Boolean).join(', ');
-  return `<div class="head"><div><h2>${esc(f.name)}${ex(f)}</h2><div class="facts">${f.typ?chip(f.typ,'info'):''}${f.branche?`<span>${esc(f.branche)}</span>`:''}${addr?`<span>${esc(addr)}</span>`:''}${f.website?`<a href="${esc(f.website)}" target="_blank" rel="noopener">${esc(f.website.replace(/^https?:\/\//,''))}</a>`:''}${f.ustid?`<span>USt-IdNr. ${esc(f.ustid)}</span>`:''}${f.tags?`<span>${esc(f.tags)}</span>`:''}</div></div>
+  return `<div class="head"><div><h2>${esc(f.name)}${ex(f)}</h2><div class="facts">${f.typ?chip(f.typ,'info'):''}${f.branche?`<span>${esc(f.branche)}</span>`:''}${addr?`<span>${esc(addr)}</span>`:''}${f.website?`<a href="${esc(f.website)}" target="_blank" rel="noopener">${esc(f.website.replace(/^https?:\/\//,''))}</a>`:''}${f.ustid?`<span>USt-IdNr. ${esc(f.ustid)}</span>`:''}${f.tags?`<span>${esc(f.tags)}</span>`:''}${f.akte?`<span style="overflow-wrap:anywhere">Kundenakte: ${f.akteUrl?`<a href="${esc(f.akteUrl)}" target="_blank" rel="noopener">${esc(winPath(A('ablageBasis')+'/'+A('kundenOrdner')+'/'+f.akte))}</a>`:esc(winPath(A('ablageBasis')+'/'+A('kundenOrdner')+'/'+f.akte))}</span>`:''}</div>${store&&store.kind==='graph'&&!f.akte?`<div class="toolbar" style="margin-top:10px"><button class="btn ghost sm" data-act="akte" data-id="${f.id}">Kundenakte anlegen</button></div>`:''}</div>
   <div class="kpis" style="min-width:min(100%,420px)"><div class="kpi"><div class="l">Umsatz netto</div><div class="v">${eur(umsatz)}</div><div class="s">${re.length} Rechnungen</div></div><div class="kpi"><div class="l">Offene Pipeline</div><div class="v">${eur(ch.filter(isOpen).reduce((a,c)=>a+(Number(c.volumen)||0),0))}</div><div class="s">${ch.filter(isOpen).length} Chancen</div></div></div></div>
   ${f.notizen?`<div class="card" style="white-space:pre-wrap">${esc(f.notizen)}</div>`:''}
   <div class="grid2">
@@ -488,7 +507,7 @@ function projektDetail(p){
   const offen = z.filter(x=>x.abrechenbar!==false && !x.rechnungId);
   const offenStd = offen.reduce((a,x)=>a+(Number(x.stunden)||0),0);
   const offenAus = au.filter(x=>x.weiterberechnen && !x.rechnungId);
-  const abgerechnet = re.filter(r=>['Gestellt','Bezahlt'].includes(r.status)).reduce((a,r)=>a+tot(r).netto,0);
+  const abgerechnet = re.filter(umsatzRel).reduce((a,r)=>a+tot(r).netto,0);
   const kosten = au.reduce((a,x)=>a+(Number(x.netto)||0),0);
   const pct = p.budgetTage ? tage/Number(p.budgetTage)*100 : 0;
   const ang = byId('angebote',p.angebotId);
@@ -519,7 +538,8 @@ function quickTime(){
 /* ---------- settings ---------- */
 const SFIELDS = [
   ['Absender auf Dokumenten',[F('firmaName','Name',{def:'Marcel Homberger'}),F('zusatz','Zusatz',{def:'Transformation Consulting'}),F('strasse','Straße und Nr.'),F('plz','PLZ',{half:1}),F('ort','Ort',{half:1,def:'Aachen'}),F('email','E-Mail',{half:1,def:'m.homberger@wendekreis.eu'}),F('telefon','Telefon',{half:1}),F('web','Website',{half:1}),F('steuernummer','Steuernummer',{half:1}),F('ustid','USt-IdNr.',{half:1}),F('bank','Bank',{half:1}),F('iban','IBAN',{half:1}),F('bic','BIC',{half:1})]],
-  ['Standards',[F('tagessatz','Standard-Tagessatz €',{t:'number',half:1}),F('stundenProTag','Stunden pro Personentag',{t:'number',half:1,def:8}),F('angebotPrefix','Präfix Angebotsnummer',{half:1,def:'A'}),F('rechnungPrefix','Präfix Rechnungsnummer',{half:1,def:'R'}),F('einleitungDE','Standard-Einleitung Angebot (DE)',{t:'textarea'}),F('schlussDE','Standard-Schlusstext Angebot (DE)',{t:'textarea'}),F('einleitungEN','Standard-Einleitung Angebot (EN)',{t:'textarea'}),F('schlussEN','Standard-Schlusstext Angebot (EN)',{t:'textarea'})]]
+  ['Standards',[F('tagessatz','Standard-Tagessatz €',{t:'number',half:1}),F('stundenProTag','Stunden pro Personentag',{t:'number',half:1,def:8}),F('angebotPrefix','Präfix Angebotsnummer (ergibt WK-A-26001-00)',{half:1,def:'WK-A'}),F('rechnungPrefix','Präfix Rechnungsnummer (ergibt WK-R-26001)',{half:1,def:'WK-R'}),F('einleitungDE','Standard-Einleitung Angebot (DE)',{t:'textarea'}),F('schlussDE','Standard-Schlusstext Angebot (DE)',{t:'textarea'}),F('einleitungEN','Standard-Einleitung Angebot (EN)',{t:'textarea'}),F('schlussEN','Standard-Schlusstext Angebot (EN)',{t:'textarea'})]],
+  ['Ablage im OneDrive (Online-Version)',[F('ablageBasis','Basisordner',{def:'01 Firma/00 Wendekreis'}),F('kundenOrdner','Ordner der Kundenakten',{half:1,def:'01 Client/Kunden'}),F('akteVorlage','Vorlage Kundenakte',{half:1,def:'_Vorlage_Kundenakte'}),F('angeboteOrdner','Unterordner für Angebote',{half:1,def:'03 Angebote'}),F('angebotVorlage','PowerPoint-Vorlage für Angebote',{def:'03 Firm/CI_Vorlagen/Angebot/wendekreis_Angebotsvorlage.pptx'})]]
 ];
 const sv = f => SET[f.k] ?? f.def ?? '';
 function settingsView(){
@@ -569,11 +589,23 @@ function updPos(){
   const u = $('#f_ustSatz'); const us = u ? (u.value===''?19:Number(u.value)) : 19;
   $('#postotal').innerHTML = `Netto <b>${eur(t)}</b> · USt ${us} % ${eur(t*us/100)} · Brutto <b>${eur(t*(1+us/100))}</b>`;
 }
+const escRe = x => String(x).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+const normPre = (p, d) => (String(p || '').trim().replace(/-+$/,'')) || d;
 function nextNum(col){
-  const pre = col==='angebote' ? (SET.angebotPrefix||'A') : (SET.rechnungPrefix||'R'); const y = today().slice(0,4);
-  const re = new RegExp('^'+pre.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'-'+y+'-(\\d+)$');
+  const pre = col==='angebote' ? normPre(SET.angebotPrefix,'WK-A') : normPre(SET.rechnungPrefix,'WK-R');
+  const yy = today().slice(2,4);
+  const re = new RegExp('^' + escRe(pre) + '-' + yy + '(\\d{3})(?:-\\d{2})?$');
   const max = S[col].reduce((m,r)=>{ const x = re.exec(r.nummer||''); return x ? Math.max(m, Number(x[1])) : m; }, 0);
-  return `${pre}-${y}-${String(max+1).padStart(3,'0')}`;
+  const n = `${pre}-${yy}${String(max+1).padStart(3,'0')}`;
+  return col==='angebote' ? n + '-00' : n;
+}
+function angStamm(a){ if (a.stamm) return a.stamm; const m = /^(.*-\d{5})-(\d{2})$/.exec(a.nummer||''); return m ? m[1] : (a.nummer || a.id || ''); }
+function angVer(a){ if (a.version != null) return Number(a.version)||0; const m = /-\d{5}-(\d{2})$/.exec(a.nummer||''); return m ? Number(m[1]) : 0; }
+const angVersions = a => { const st = angStamm(a); return st ? S.angebote.filter(x=>angStamm(x)===st).sort((x,y)=>angVer(x)-angVer(y)) : [a]; };
+function lockInfo(col, r){
+  if (col==='angebote' && r.status==='Ersetzt') return {keys:new Set(['notizen']), msg:'Diese Version wurde durch eine neuere ersetzt und ist nur noch lesbar.'};
+  if (col==='rechnungen' && r.id && ['Gestellt','Bezahlt','Storniert'].includes(r.status)) return {keys:new Set(['status','bezahltAm','notizen']), msg: rArt(r)==='rechnung' ? 'Gestellte Rechnung: Nur Status, Bezahlt-Datum und Notizen sind änderbar. Inhaltliche Änderungen über „Stornieren“ oder „Korrektur“.' : 'Ausgestellter Beleg: Nur Notizen sind änderbar.'};
+  return null;
 }
 function openForm(col, id, preset={}, after=null){
   const E = ENT[col]; const base = id ? clone(byId(col,id)||{}) : {};
@@ -582,33 +614,56 @@ function openForm(col, id, preset={}, after=null){
     if (col==='projekte' && SET.tagessatz) base.tagessatz = Number(SET.tagessatz); }
   Object.assign(base, preset||{});
   if (!id && preset && preset.firmaId && (col==='angebote'||col==='rechnungen')) { const f = byId('firmen',preset.firmaId); if (f && f.sprache) base.sprache = f.sprache; if (col==='angebote' && f && f.sprache==='EN') { base.einleitung = SET.einleitungEN||base.einleitung; base.schluss = SET.schlussEN||base.schluss; } }
-  editing = {col, id, base, after};
+  const lock = id ? lockInfo(col, {...base, id}) : null;
+  editing = {col, id, base, after, lock};
   const extra = [];
+  if (id && col==='angebote' && base.ordnerUrl) extra.push(`<a class="btn ghost" href="${esc(base.ordnerUrl)}" target="_blank" rel="noopener">Angebotsordner öffnen</a>`);
+  if (id && col==='angebote' && base.dokument && base.dokument.webUrl) extra.push(`<a class="btn ghost" href="${esc(base.dokument.webUrl)}" target="_blank" rel="noopener">PowerPoint öffnen</a>`);
+  if (id && col==='angebote' && base.status!=='Ersetzt') extra.push(`<button class="btn ghost" data-act="ang-doc">${base.dokument?'Dokument neu erzeugen':'Dokument erzeugen'}</button><button class="btn ghost" data-act="ang-ver">Neue Version</button>`);
+  if (id && col==='rechnungen' && rArt(base)==='rechnung' && ['Gestellt','Bezahlt'].includes(base.status)) extra.push(`<button class="btn ghost" data-act="r-korr">Korrektur</button><button class="btn ghost" data-act="r-storno">Stornieren</button>`);
   if (id && (col==='angebote'||col==='rechnungen')) extra.push(`<button class="btn ghost" data-act="docview">Dokument ansehen</button>`);
   if (id && col==='angebote') extra.push(`<button class="btn ghost" data-act="ang2proj">Projekt anlegen</button><button class="btn ghost" data-act="ang2rech">Rechnung erstellen</button>`);
   if (id && col==='chancen') extra.push(`<button class="btn ghost" data-act="ch2ang">Angebot erstellen</button>`);
   if (id && col==='kontakte') extra.push(`<button class="btn ghost" data-act="k2akt">Aktivität erfassen</button>`);
   $('#modal').innerHTML = `<div class="dlg${col==='angebote'||col==='rechnungen'?' wide':''}" role="dialog" aria-modal="true" aria-labelledby="dlgt"><div class="dlg-h"><h2 id="dlgt">${id?esc(E.title(base)):'Neu: '+E.one}${ex(base)}</h2><button class="icon-btn" data-act="close" aria-label="Schließen">×</button></div>
-    <form class="dlg-b" id="frm"><div class="form">${E.fields.map(f=>fieldHtml(f, base[f.k])).join('')}</div></form>
-    <div class="dlg-f">${id?`<button class="btn danger" data-act="del">Löschen</button>`:''}${extra.join('')}<span class="sp"></span><button class="btn ghost" data-act="close">Abbrechen</button><button class="btn" data-act="save">Speichern</button></div></div>`;
+    <form class="dlg-b" id="frm">${lock?`<div class="banner lockinfo">${esc(lock.msg)}</div>`:''}${id&&col==='angebote'?versionsHtml(base, id)+ablageHtml(base):''}${id&&col==='rechnungen'?bezugHtml(base, id):''}<div class="form">${E.fields.filter(f=>!f.show||f.show(base)).map(f=>fieldHtml(f, base[f.k])).join('')}</div></form>
+    <div class="dlg-f">${id&&!lock?`<button class="btn danger" data-act="del">Löschen</button>`:''}${extra.join('')}<span class="sp"></span><button class="btn ghost" data-act="close">${lock&&lock.keys.size<2?'Schließen':'Abbrechen'}</button>${lock&&lock.keys.size<2&&col==='angebote'?'':`<button class="btn" data-act="save">Speichern</button>`}</div></div>`;
   $('#modal').hidden = false; updPos();
+  if (lock) $$('#frm input,#frm select,#frm textarea,#frm button').forEach(el => { const k = (el.id||'').replace(/^f_/,''); if (!lock.keys.has(k)) el.disabled = true; });
   const first = $('#frm input:not([type=checkbox]),#frm select,#frm textarea'); if (first && !id) first.focus();
 }
 function closeModal(){ $('#modal').hidden = true; $('#modal').innerHTML = ''; editing = null; if (pending) { pending=false; } render(); }
 async function saveForm(){
   if (!editing) return null;
-  const {col, id, base, after} = editing; const E = ENT[col]; const data = clone(base);
-  for (const f of E.fields) { const v = readField(f); if (v !== undefined) data[f.k] = v; }
+  const {col, id, base, after, lock} = editing; const E = ENT[col]; const data = clone(base);
+  for (const f of E.fields) { if (lock && !lock.keys.has(f.k)) continue; if (f.show && !f.show(base)) continue; const v = readField(f); if (v !== undefined) data[f.k] = v; }
+  if (col==='rechnungen') {
+    if (data.status==='Storniert' && base.status!=='Storniert') { toast('Bitte über „Stornieren“ stornieren, damit eine Stornorechnung entsteht.'); return null; }
+    if (lock && data.status==='Entwurf') { toast('Eine gestellte Rechnung kann nicht zurück in den Entwurf.'); return null; }
+    if (rArt(data)!=='rechnung' && !String(data.grund||'').trim()) { toast('Bitte den Grund angeben.'); return null; }
+    if (rArt(data)==='korrektur' && !(tot(data).netto < 0)) { toast('Korrekturbeträge bitte negativ eingeben, z. B. Nachlass -500.'); return null; }
+  }
+  if (col==='angebote' && data.status==='Ersetzt' && base.status!=='Ersetzt') { toast('„Ersetzt“ setzt die App selbst, wenn du eine neue Version anlegst.'); return null; }
+  if ((col==='angebote'||col==='rechnungen') && data.nummer) {
+    if (S[col].some(r => r.id!==id && r.nummer===data.nummer)) {
+      if (!id) { const n = nextNum(col); toast(`Nummer ${data.nummer} ist schon vergeben – neue Nummer ${n}.`); data.nummer = n; }
+      else { toast(`Die Nummer ${data.nummer} ist bereits vergeben.`); return null; }
+    }
+    if (col==='angebote' && !id) { data.stamm = angStamm({nummer:data.nummer}); data.version = angVer({nummer:data.nummer}); }
+  }
   const miss = E.fields.filter(f=>f.req && (data[f.k]===''||data[f.k]==null||(Array.isArray(data[f.k])&&!data[f.k].length)));
   if (miss.length) { toast(`Bitte ausfüllen: ${miss.map(f=>f.l).join(', ')}`); return null; }
-  if (col==='rechnungen' && !data.faellig) { const f = byId('firmen',data.firmaId); data.faellig = addDays(data.datum||today(), Number(f&&f.zahlungsziel)||30); }
+  if (col==='rechnungen' && rArt(data)==='rechnung' && !data.faellig) { const f = byId('firmen',data.firmaId); data.faellig = addDays(data.datum||today(), Number(f&&f.zahlungsziel)||30); }
   if (col==='rechnungen' && data.status==='Bezahlt' && !data.bezahltAm) data.bezahltAm = today();
   const newId = await put(col, id, data);
   if (newId == null) return null;
   editing = null; $('#modal').hidden = true; $('#modal').innerHTML = '';
   toast(`${E.one} gespeichert`);
   if (after) await after(newId, data);
-  render(); return newId;
+  render();
+  if (col==='chancen' && data.phase==='Angebot' && base.phase!=='Angebot') setTimeout(() => onPhase(byId('chancen', newId)), 60);
+  if (col==='angebote' && store && store.kind==='graph') { const a = byId('angebote', newId); if (a && !a.dokument && a.status!=='Ersetzt') angebotAblage(newId); }
+  return newId;
 }
 /* ---------- local storage: one JSON file in the chosen (OneDrive) folder ---------- */
 const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
@@ -803,8 +858,8 @@ const DOC_CSS = `.paper{background:#fff;color:#2e3a3f;font-family:"Aptos","Segoe
 .paper .ft{margin-top:auto;padding-top:8mm;border-top:1px solid #8fb8b3;font-size:7.5pt;color:#6b7a80;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .paper .ft b{color:#0f2b36;font-weight:600}`;
 const LBL = {
-  DE:{angebote:'Angebot',rechnungen:'Rechnung',nr:{angebote:'Angebots-Nr.',rechnungen:'Rechnungs-Nr.'},datum:'Datum',gueltig:'Gültig bis',faellig:'Zahlbar bis',leistung:'Leistungszeitraum',po:'Ihre Bestellung',kustid:'Ihre USt-IdNr.',pos:'Pos.',besch:'Beschreibung',menge:'Menge',ep:'Einzelpreis',gesamt:'Gesamt',netto:'Summe netto',ust:'USt',brutto:'Gesamtbetrag',hallo:n=>n?`Guten Tag ${n},`:'Sehr geehrte Damen und Herren,',zahl:(d,nr)=>`Bitte überweisen Sie den Gesamtbetrag bis zum ${d} unter Angabe der Rechnungsnummer ${nr}.`,danke:'Vielen Dank für die vertrauensvolle Zusammenarbeit.',gruss:'Mit freundlichen Grüßen',bank:'Bank',steuer:'Steuernr.',ustid:'USt-IdNr.',u:{PT:'PT',Std:'Std.',Pauschal:'pauschal',Stk:'Stk.',km:'km'}},
-  EN:{angebote:'Proposal',rechnungen:'Invoice',nr:{angebote:'Proposal no.',rechnungen:'Invoice no.'},datum:'Date',gueltig:'Valid until',faellig:'Due date',leistung:'Service period',po:'Your PO',kustid:'Your VAT ID',pos:'No.',besch:'Description',menge:'Qty',ep:'Unit price',gesamt:'Amount',netto:'Subtotal',ust:'VAT',brutto:'Total',hallo:n=>n?`Dear ${n},`:'Dear Sir or Madam,',zahl:(d,nr)=>`Please transfer the total amount by ${d}, quoting invoice number ${nr}.`,danke:'Thank you for your trust and the good cooperation.',gruss:'Kind regards',bank:'Bank',steuer:'Tax no.',ustid:'VAT ID',u:{PT:'days',Std:'hrs',Pauschal:'lump sum',Stk:'pcs',km:'km'}}
+  DE:{angebote:'Angebot',rechnungen:'Rechnung',storno:'Stornorechnung',korrektur:'Rechnungskorrektur',bezug:'Bezug',bezugTxt:(n,d)=>`Rechnung ${n} vom ${d}`,stornoTxt:'Hiermit stornieren wir die oben genannte Rechnung vollständig.',korrTxt:'Hiermit korrigieren wir die oben genannte Rechnung wie folgt. Der Betrag wird mit Ihrer Zahlung verrechnet bzw. erstattet.',grund:'Grund',nr:{angebote:'Angebots-Nr.',rechnungen:'Rechnungs-Nr.'},datum:'Datum',gueltig:'Gültig bis',faellig:'Zahlbar bis',leistung:'Leistungszeitraum',po:'Ihre Bestellung',kustid:'Ihre USt-IdNr.',pos:'Pos.',besch:'Beschreibung',menge:'Menge',ep:'Einzelpreis',gesamt:'Gesamt',netto:'Summe netto',ust:'USt',brutto:'Gesamtbetrag',hallo:n=>n?`Guten Tag ${n},`:'Sehr geehrte Damen und Herren,',zahl:(d,nr)=>`Bitte überweisen Sie den Gesamtbetrag bis zum ${d} unter Angabe der Rechnungsnummer ${nr}.`,danke:'Vielen Dank für die vertrauensvolle Zusammenarbeit.',gruss:'Mit freundlichen Grüßen',bank:'Bank',steuer:'Steuernr.',ustid:'USt-IdNr.',u:{PT:'PT',Std:'Std.',Pauschal:'pauschal',Stk:'Stk.',km:'km'}},
+  EN:{angebote:'Proposal',rechnungen:'Invoice',storno:'Cancellation invoice',korrektur:'Invoice correction',bezug:'Reference',bezugTxt:(n,d)=>`Invoice ${n} dated ${d}`,stornoTxt:'We hereby cancel the above invoice in full.',korrTxt:'We hereby correct the above invoice as follows. The amount will be offset against your payment or refunded.',grund:'Reason',nr:{angebote:'Proposal no.',rechnungen:'Invoice no.'},datum:'Date',gueltig:'Valid until',faellig:'Due date',leistung:'Service period',po:'Your PO',kustid:'Your VAT ID',pos:'No.',besch:'Description',menge:'Qty',ep:'Unit price',gesamt:'Amount',netto:'Subtotal',ust:'VAT',brutto:'Total',hallo:n=>n?`Dear ${n},`:'Dear Sir or Madam,',zahl:(d,nr)=>`Please transfer the total amount by ${d}, quoting invoice number ${nr}.`,danke:'Thank you for your trust and the good cooperation.',gruss:'Kind regards',bank:'Bank',steuer:'Tax no.',ustid:'VAT ID',u:{PT:'days',Std:'hrs',Pauschal:'lump sum',Stk:'pcs',km:'km'}}
 };
 function docHtml(col, r){
   const f = byId('firmen', r.firmaId) || {}; const k = byId('kontakte', r.kontaktId); const p = byId('projekte', r.projektId);
@@ -820,15 +875,17 @@ function docHtml(col, r){
   if (col==='rechnungen' && (r.leistungVon||r.leistungBis)) meta.push([L.leistung, `${d(r.leistungVon)}${r.leistungBis?' – '+d(r.leistungBis):''}`]);
   if (col==='rechnungen' && p && p.poNummer) meta.push([L.po, p.poNummer]);
   if (col==='rechnungen' && f.ustid) meta.push([L.kustid, f.ustid]);
+  const art = col==='rechnungen' ? rArt(r) : null; const bez = r.bezugId ? byId('rechnungen', r.bezugId) : null;
+  if (bez) meta.push([L.bezug, L.bezugTxt(bez.nummer, d(bez.datum))]);
   const intro = col==='angebote' ? (r.einleitung||'') : '';
-  const outro = col==='angebote' ? (r.schluss||'') : [r.hinweis||'', r.status!=='Bezahlt' && r.faellig ? L.zahl(d(r.faellig), r.nummer) : '', L.danke].filter(Boolean).join('\n\n');
+  const outro = col==='angebote' ? (r.schluss||'') : art!=='rechnung' ? [art==='storno'?L.stornoTxt:L.korrTxt, r.grund?`${L.grund}: ${r.grund}`:''].filter(Boolean).join('\n\n') : [r.hinweis||'', r.status!=='Bezahlt' && r.faellig ? L.zahl(d(r.faellig), r.nummer) : '', L.danke].filter(Boolean).join('\n\n');
   const ftA = [`<b>${esc(SET.firmaName||'Marcel Homberger')}</b> · ${esc(SET.zusatz||'Transformation Consulting')}`, [SET.strasse,[SET.plz,SET.ort].filter(Boolean).join(' ')].filter(Boolean).join(' · ')].filter(Boolean).map(esc2).join('<br>');
   const ftB = [SET.email, SET.telefon, SET.web].filter(Boolean).map(esc).join('<br>');
   const ftC = [SET.bank?`${L.bank}: ${esc(SET.bank)}`:'', SET.iban?`IBAN ${esc(SET.iban)}`:'', SET.bic?`BIC ${esc(SET.bic)}`:''].filter(Boolean).join('<br>');
   const ftD = [SET.steuernummer?`${L.steuer} ${esc(SET.steuernummer)}`:'', SET.ustid?`${L.ustid} ${esc(SET.ustid)}`:''].filter(Boolean).join('<br>');
   return `<div class="paper"><div class="hd"><div></div><div class="logo">wendekre<span class="i">ı<b></b></span>s<small>${esc(SET.zusatz||'Transformation Consulting')}</small></div></div>
   <div class="row"><div><div class="snd">${esc(sender)}</div><div class="addr">${esc(addr)}</div></div><table class="meta">${meta.map(([a,b])=>`<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table></div>
-  <h1>${esc(L[col])}${r.titel?': '+esc(r.titel):''}</h1>
+  <h1>${esc(art&&art!=='rechnung'?L[art]:L[col])}${r.titel&&!(art&&art!=='rechnung')?': '+esc(r.titel):''}</h1>
   <p>${esc(L.hallo(k?kname(k):''))}</p>${intro?`<p>${esc(intro)}</p>`:''}
   <table class="it"><thead><tr><th>${L.pos}</th><th>${L.besch}</th><th class="rr">${L.menge}</th><th class="rr">${L.ep}</th><th class="rr">${L.gesamt}</th></tr></thead><tbody>${(r.positionen||[]).map((x,i)=>`<tr><td>${i+1}</td><td>${esc(x.text)}</td><td class="rr">${qty(x.menge)} ${esc(L.u[x.einheit]||x.einheit||'')}</td><td class="rr">${money(x.preis)}</td><td class="rr">${money((Number(x.menge)||0)*(Number(x.preis)||0))}</td></tr>`).join('')}</tbody></table>
   <table class="sum"><tr><td>${L.netto}</td><td class="rr">${money(t.netto)}</td></tr><tr><td>${L.ust} ${t.ustSatz} %</td><td class="rr">${money(t.ust)}</td></tr><tr class="g"><td>${L.brutto}</td><td class="rr">${money(t.brutto)}</td></tr></table>
@@ -848,6 +905,188 @@ async function save_(filename, data, sub='Export'){
   catch(e){ toast('Datei konnte nicht geschrieben werden: ' + (e && e.message || e)); }
 }
 
+/* ---------- dialogs ---------- */
+function ask({title, html, ok='OK', cancel='Abbrechen', read, validate}){
+  return new Promise(res => {
+    const el = $('#ask');
+    el.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="askt"><div class="dlg-h"><h2 id="askt">${esc(title)}</h2></div><div class="dlg-b">${html}</div><div class="dlg-f"><span class="sp"></span><button type="button" class="btn ghost" id="ask_no">${esc(cancel)}</button><button type="button" class="btn" id="ask_ok">${esc(ok)}</button></div></div>`;
+    el.hidden = false;
+    const done = v => { el.hidden = true; el.innerHTML = ''; res(v); };
+    $('#ask_no').onclick = () => done(null);
+    $('#ask_ok').onclick = () => { const v = read ? read() : true; const err = validate && validate(v); if (err) { toast(err); return; } done(v); };
+  });
+}
+function ablageHtml(a){
+  if (!a.ordner) return '';
+  return `<div class="vers"><h3>Ablage im OneDrive</h3><p style="margin:0;font-size:13px;overflow-wrap:anywhere">${a.ordnerUrl?`<a href="${esc(a.ordnerUrl)}" target="_blank" rel="noopener">${esc(winPath(a.ordner))}</a>`:esc(winPath(a.ordner))}${a.dokument&&a.dokument.pfad?`<br><span class="muted">Datei dieser Version: </span>${a.dokument.webUrl?`<a href="${esc(a.dokument.webUrl)}" target="_blank" rel="noopener">${esc(a.dokument.pfad.split('/').pop())}</a>`:esc(a.dokument.pfad.split('/').pop())}`:'<br><span class="muted">Für diese Version gibt es noch kein Dokument.</span>'}</p></div>`;
+}
+function versionsHtml(a, id){
+  const vs = angVersions({...a, id}); if (vs.length < 2) return a.aenderungsgrund ? '' : '';
+  return `<div class="vers"><h3>Versionen dieses Angebots</h3><ul class="mini">${vs.slice().reverse().map(v=>`<li data-act="edit" data-col="angebote" data-id="${v.id}"${v.id===id?' aria-current="true"':''}><span class="t">${esc(v.nummer)} · ${sChip(v.status)}${v.aenderungsgrund?`<br><span class="muted">${esc(v.aenderungsgrund)}</span>`:''}</span><span class="m">${eur(tot(v).netto)}<br>${fmtD(v.datum)}</span></li>`).join('')}</ul></div>`;
+}
+function bezugHtml(r, id){
+  const items = [];
+  if (r.bezugId) { const o = byId('rechnungen', r.bezugId); if (o) items.push(`<li data-act="edit" data-col="rechnungen" data-id="${o.id}"><span class="t">Bezieht sich auf ${esc(o.nummer)}</span><span class="m">${eur(tot(o).brutto)}</span></li>`); }
+  S.rechnungen.filter(x => x.bezugId===id).forEach(x => items.push(`<li data-act="edit" data-col="rechnungen" data-id="${x.id}"><span class="t">${rArt(x)==='storno'?'Stornorechnung':'Korrektur'} ${esc(x.nummer)}</span><span class="m">${eur(tot(x).brutto)}</span></li>`));
+  if (r.neuId) { const n = byId('rechnungen', r.neuId); if (n) items.push(`<li data-act="edit" data-col="rechnungen" data-id="${n.id}"><span class="t">Neu ausgestellt als ${esc(n.nummer)}</span><span class="m">${sChip(rStatus(n))}</span></li>`); }
+  if (r.ersetztId) { const o = byId('rechnungen', r.ersetztId); if (o) items.push(`<li data-act="edit" data-col="rechnungen" data-id="${o.id}"><span class="t">Ersetzt die stornierte Rechnung ${esc(o.nummer)}</span><span class="m"></span></li>`); }
+  if (rArt(r)==='rechnung' && r.status==='Gestellt' && offen(r) !== tot(r).brutto) items.push(`<li><span class="t">Offener Betrag nach Korrekturen</span><span class="m"><b>${eur(offen(r))}</b></span></li>`);
+  return items.length ? `<div class="vers"><h3>Verknüpfte Belege</h3><ul class="mini">${items.join('')}</ul></div>` : '';
+}
+
+/* ---------- Nr. 2: chance moves to phase "Angebot" ---------- */
+async function onPhase(c){
+  if (!c || c.phase!=='Angebot' || S.angebote.some(a => a.chanceId===c.id)) return;
+  const ok = await ask({title:'Angebot anlegen?', html:`<p style="margin-top:0">„${esc(c.titel)}“ steht jetzt in der Phase Angebot. Soll ich das Angebot mit der Nummer <b>${esc(nextNum('angebote'))}</b> anlegen?</p>${store&&store.kind==='graph'?'<p class="muted">Beim Speichern lege ich die Kundenakte, den Angebotsordner und das Angebotsdokument aus deiner Vorlage im OneDrive an.</p>':''}`, ok:'Angebot anlegen', cancel:'Später'});
+  if (ok) ch2ang(c);
+}
+
+/* ---------- Nr. 6: offer versions ---------- */
+async function neueVersion(a){
+  const vs = angVersions(a); const cur = vs[vs.length-1]; const stamm = angStamm(cur); const v = angVer(cur) + 1;
+  const nr = `${stamm}-${String(v).padStart(2,'0')}`;
+  const res = await ask({title:`Neue Version ${nr}`, html:`<p style="margin-top:0">Die neue Version wird zum gültigen Stand. ${esc(cur.nummer)} bleibt als „Ersetzt“ in der Historie.</p><div class="form"><div class="fld"><label for="ask_art">Was ändert sich?</label><select id="ask_art"><option>Leistungsumfang</option><option>Honorar</option><option>Laufzeit</option><option>Sonstiges</option></select></div><div class="fld"><label for="ask_txt">Kurze Beschreibung *</label><textarea id="ask_txt" rows="2" placeholder="z. B. AP 3 entfällt, 8 PT weniger"></textarea></div></div>`, ok:'Version anlegen', read:()=>({art:$('#ask_art').value, txt:$('#ask_txt').value.trim()}), validate:x=>x.txt?'':'Bitte kurz beschreiben, was sich ändert.'});
+  if (!res) return;
+  const copy = clone(cur); ['id','createdAt','updatedAt','dokument','ersetztDurch','statusVorher'].forEach(k => delete copy[k]);
+  Object.assign(copy, {stamm, version:v, nummer:nr, status:'Entwurf', datum:today(), gueltigBis:addDays(today(),30), vorgaengerId:cur.id, aenderungsgrund:`${res.art}: ${res.txt}`});
+  const nid = await put('angebote', null, copy); if (!nid) return;
+  await patch('angebote', cur.id, {status:'Ersetzt', statusVorher:cur.status, ersetztDurch:nid});
+  closeModal(); openForm('angebote', nid); toast(`Version ${nr} angelegt – Änderungen eintragen und speichern.`);
+}
+
+/* ---------- Nr. 10/11: storno and correction ---------- */
+async function stornieren(r){
+  const res = await ask({title:`Rechnung ${r.nummer} stornieren`, html:`<p style="margin-top:0">Es entsteht eine Stornorechnung mit eigener Nummer (${esc(nextNum('rechnungen'))}) über ${eur(-tot(r).brutto)}. ${esc(r.nummer)} erhält den Status „Storniert“.</p>${r.status==='Bezahlt'?'<div class="banner" style="margin-bottom:12px">Diese Rechnung ist bereits bezahlt. Kläre Erstattung oder Verrechnung mit dem Kunden.</div>':''}<div class="form"><div class="fld"><label for="ask_grund">Grund *</label><textarea id="ask_grund" rows="2" placeholder="z. B. falscher Leistungszeitraum"></textarea></div><div class="fld check"><label><input type="checkbox" id="ask_neu" checked> Danach neu ausstellen (Entwurf mit denselben Positionen und neuer Nummer)</label></div></div>`, ok:'Stornieren', read:()=>({grund:$('#ask_grund').value.trim(), neu:$('#ask_neu').checked}), validate:x=>x.grund?'':'Bitte den Grund angeben.'});
+  if (!res) return;
+  const base = {firmaId:r.firmaId, kontaktId:r.kontaktId, projektId:r.projektId, sprache:r.sprache, leistungVon:r.leistungVon, leistungBis:r.leistungBis, ustSatz:r.ustSatz};
+  const sid = await put('rechnungen', null, {...base, art:'storno', bezugId:r.id, nummer:nextNum('rechnungen'), status:'Gestellt', titel:`Storno zu ${r.nummer}`, datum:today(), positionen:(r.positionen||[]).map(p=>({...p, preis:-(Number(p.preis)||0)})), grund:res.grund});
+  if (!sid) return;
+  let nid = null;
+  if (res.neu) nid = await put('rechnungen', null, {...base, art:'rechnung', nummer:nextNum('rechnungen'), status:'Entwurf', titel:r.titel, datum:today(), positionen:clone(r.positionen||[]), hinweis:r.hinweis||'', ersetztId:r.id});
+  await patch('rechnungen', r.id, {status:'Storniert', stornoId:sid, storniertAm:today(), ...(nid?{neuId:nid}:{})});
+  for (const x of S.zeiten.filter(z => z.rechnungId===r.id)) await patch('zeiten', x.id, {rechnungId: nid || null});
+  for (const x of S.ausgaben.filter(z => z.rechnungId===r.id)) await patch('ausgaben', x.id, {rechnungId: nid || null});
+  closeModal(); toast(nid ? 'Storniert und als Entwurf neu ausgestellt' : 'Rechnung storniert');
+  openForm('rechnungen', nid || sid);
+}
+function korrektur(r){
+  closeModal();
+  openForm('rechnungen', null, {art:'korrektur', bezugId:r.id, titel:`Korrektur zu ${r.nummer}`, firmaId:r.firmaId, kontaktId:r.kontaktId, projektId:r.projektId, sprache:r.sprache, leistungVon:r.leistungVon, leistungBis:r.leistungBis, ustSatz:r.ustSatz, positionen:[{text:'Nachlass', menge:1, einheit:'Pauschal', preis:0}]});
+  toast('Beträge der Korrektur negativ eingeben, z. B. -500.');
+}
+
+/* ---------- Nr. 3–5: customer file, offer folder, PowerPoint ---------- */
+const A = k => { for (const [,fs] of SFIELDS) for (const f of fs) if (f.k===k) return String(SET[k] || f.def || '').replace(/^\/+|\/+$/g,''); return ''; };
+const sanitize = x => String(x||'').replace(/[\\/:*?"<>|#%~&{}]+/g,' ').replace(/\s+/g,' ').trim().replace(/[. ]+$/,'').slice(0,60);
+const slug = x => sanitize(x).replace(/\s+/g,'-');
+const winPath = p => { const b = A('ablageBasis'); let x = String(p||''); if (b && x.startsWith(b + '/')) x = x.slice(b.length + 1); return x.split('/').join('\\'); };
+const gEnc = p => p.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+const gPath = p => `https://graph.microsoft.com/v1.0/me/drive/root:/${gEnc(p)}`;
+async function msApi(url, opt = {}, retried){
+  const tok = await msAccess(retried);
+  const r = await fetch(url, {...opt, cache:'no-store', headers:{...(opt.headers||{}), Authorization:'Bearer ' + tok}});
+  if (r.status === 401 && !retried) return msApi(url, opt, true);
+  return r;
+}
+async function gGet(p){ const r = await msApi(gPath(p) + '?select=id,name,webUrl,parentReference,folder'); if (r.status === 404) return null; if (!r.ok) throw {code:'net', message:`OneDrive antwortet mit HTTP ${r.status}`}; return r.json(); }
+async function gMkdir(parent, name){ const r = await msApi(gPath(parent) + ':/children', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name, folder:{}, '@microsoft.graph.conflictBehavior':'fail'})}); if (!r.ok && r.status !== 409) throw {code:'net', message:`Ordner „${name}“ konnte nicht angelegt werden (HTTP ${r.status})`}; }
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+function needGraph(){ if (store && store.kind==='graph') return true; toast('Kundenakte und Angebotsdokument gibt es nur in der Online-Version (mit Microsoft-Anmeldung).'); return false; }
+async function ensureAkte(f){
+  const kpath = `${A('ablageBasis')}/${A('kundenOrdner')}`; const name = f.akte || sanitize(f.name); const p = `${kpath}/${name}`;
+  let it = await gGet(p);
+  if (!it) {
+    const tpl = await gGet(`${kpath}/${A('akteVorlage')}`), parent = await gGet(kpath);
+    if (tpl && parent) {
+      const r = await msApi(`https://graph.microsoft.com/v1.0/me/drive/items/${tpl.id}/copy`, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({parentReference:{driveId:parent.parentReference && parent.parentReference.driveId, id:parent.id}, name})});
+      if (r.status === 202 || r.ok) for (let i = 0; i < 24 && !it; i++) { await sleep(750); it = await gGet(p); }
+    }
+    if (!it) { if (!parent) throw {code:'net', message:`Ordner „${kpath}“ nicht gefunden – bitte in den Einstellungen prüfen.`}; await gMkdir(kpath, name); await gMkdir(p, A('angeboteOrdner')); it = await gGet(p); }
+  }
+  if (f.akte !== name || f.akteUrl !== (it && it.webUrl)) await patch('firmen', f.id, {akte:name, akteUrl:it && it.webUrl || ''});
+  return p;
+}
+async function loadJSZip(){
+  if (window.JSZip) return;
+  await new Promise((res, rej) => { const sc = document.createElement('script'); sc.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js'; sc.onload = res; sc.onerror = () => rej({code:'net', message:'Die Bibliothek zum Erzeugen von PowerPoint-Dateien konnte nicht geladen werden.'}); document.head.appendChild(sc); });
+}
+const DA = 'http://schemas.openxmlformats.org/drawingml/2006/main';
+function pptCtx(a){
+  const f = byId('firmen', a.firmaId) || {}, k = byId('kontakte', a.kontaktId);
+  const n = x => (Number(x)||0).toLocaleString('de-DE', {maximumFractionDigits: (Number(x)||0) % 1 ? 2 : 0});
+  const pos = (a.positionen||[]).filter(p => p.text || p.preis);
+  const tage = pos.filter(p => p.einheit==='PT').reduce((s,p) => s + (Number(p.menge)||0), 0);
+  return {kunde:f.name||'', nummer:a.nummer||'', titel:a.titel||'', kurz:a.kurztitel||a.titel||'', datum:fmtD(a.datum), gueltig:fmtD(a.gueltigBis), netto:n(tot(a).netto), tage: tage ? n(tage) : '', telefon:SET.telefon||'', web:SET.web||'www.wendekreis.eu', kontakt: k ? [kname(k), k.rolle].filter(Boolean).join(', ') : '', pos: pos.map(p => ({name:String(p.text||'').split('\n')[0], menge:n(p.menge), preis:n(p.preis)+' €', betrag:n((Number(p.menge)||0)*(Number(p.preis)||0))+' €'})), n};
+}
+function fillSlide(xml, c){
+  const doc = new DOMParser().parseFromString(xml, 'application/xml');
+  const paras = [...doc.getElementsByTagNameNS(DA, 'p')];
+  let prev = '', ap = null, apk = 0, summe = 0;
+  for (const p of paras) {
+    const ts = [...p.getElementsByTagNameNS(DA, 't')]; if (!ts.length) continue;
+    const t = ts.map(x => x.textContent).join(''); let v = t;
+    if (/^Angebot: \[Kundennutzen/.test(t)) v = `Angebot: ${c.titel}`;
+    else if (t === 'in acht Wörtern]') v = '';
+    if (v.includes('Angebot WK-[')) v = v.replace(/WK-\[JJ\]-\[NNN\]-v\d+/, c.nummer).replace(/Anfrage \[Nr\.\]\s*·\s*/, '').replace('[TT.MM.JJJJ]', c.datum);
+    if (/^WK-JJ-NNN-vX\s+·\s+Angebotstitel kurz\s+·\s+TT\.MM\.JJJJ$/.test(v)) v = `${c.nummer}  ·  ${c.kurz}  ·  ${c.datum}`;
+    if (c.kunde) v = v.split('[Kunde]').join(c.kunde);
+    if (prev === 'Gültig bis' && v === '[TT.MM.JJJJ]' && c.gueltig) v = c.gueltig;
+    if (v === 'bis [TT.MM.JJJJ]' && c.gueltig) v = `bis ${c.gueltig}`;
+    if (prev === 'Aufwand' && v === '[xx] Beratertage' && c.tage) v = `${c.tage} Beratertage`;
+    if (prev === 'Honorar' && v.startsWith('[xxx.xxx] €')) v = v.replace('[xxx.xxx]', c.netto);
+    if (c.telefon) v = v.split('[Telefon]').join(c.telefon);
+    if (v === '[www.wendekreis.eu]') v = c.web;
+    if (prev === 'Auftraggeber / Entscheidung' && v === '[Name, Funktion]' && c.kontakt) v = c.kontakt;
+    const m = /^AP (\d)  \[Name\]$/.exec(v);
+    if (m) { const pp = c.pos[Number(m[1]) - 1]; if (pp) { v = `AP ${m[1]}  ${pp.name}`; ap = pp; apk = 0; } else ap = null; }
+    else if (ap && apk < 3 && ['[xx]','[x.xxx] €','[xx.xxx] €'][apk] === v) { v = [ap.menge, ap.preis, ap.betrag][apk]; apk++; if (apk === 3) ap = null; }
+    if (t === 'Summe') summe = 1;
+    else if (summe === 1 && v === '[xx]') { if (c.tage) v = c.tage; summe = 2; }
+    else if (summe === 2 && v === '[xxx.xxx] €') { v = `${c.netto} €`; summe = 0; }
+    if (v !== t) { ts[0].textContent = v; ts.slice(1).forEach(x => x.textContent = ''); }
+    if (t.trim()) prev = t.trim();
+  }
+  return new XMLSerializer().serializeToString(doc);
+}
+async function buildPptx(a){
+  await loadJSZip();
+  const tp = `${A('ablageBasis')}/${A('angebotVorlage')}`;
+  const r = await msApi(gPath(tp) + '?select=id,@microsoft.graph.downloadUrl');
+  if (!r.ok) throw {code:'tpl', message:`Angebotsvorlage nicht gefunden (${tp}).`};
+  const m = await r.json(); const dl = m['@microsoft.graph.downloadUrl'];
+  const buf = await (dl ? fetch(dl, {cache:'no-store'}) : msApi(gPath(tp) + ':/content')).then(x => x.arrayBuffer());
+  const zip = await window.JSZip.loadAsync(buf); const c = pptCtx(a);
+  for (const name of Object.keys(zip.files).filter(n => /^ppt\/(slides\/slide|slideLayouts\/slideLayout|slideMasters\/slideMaster)\d+\.xml$/.test(n))) zip.file(name, fillSlide(await zip.file(name).async('string'), c));
+  return zip.generateAsync({type:'blob', mimeType:'application/vnd.openxmlformats-officedocument.presentationml.presentation'});
+}
+let ablageLauf = false;
+async function angebotAblage(id){
+  if (!needGraph() || ablageLauf) return; ablageLauf = true;
+  try {
+    const a = byId('angebote', id); if (!a) return;
+    const f = byId('firmen', a.firmaId); if (!f) { toast('Für die Ablage bitte dem Angebot eine Firma zuordnen.'); return; }
+    toast('Kundenakte wird geprüft …');
+    const akte = await ensureAkte(f);
+    const vs = angVersions(a); const known = vs.find(v => v.ordner);
+    const kurz = slug(a.kurztitel || String(a.titel||'').split(/\s+/).slice(0,4).join(' ')) || 'Angebot';
+    const ordner = known ? known.ordner : `${akte}/${A('angeboteOrdner')}/${angStamm(a)}_${slug(f.name)}_${kurz}`;
+    toast('Angebotsdokument wird erzeugt …');
+    const blob = await buildPptx(a);
+    const file = `${a.nummer}_${slug(f.name)}_${kurz}.pptx`;
+    const r = await msApi(gPath(`${ordner}/${file}`) + ':/content', {method:'PUT', headers:{'Content-Type':'application/vnd.openxmlformats-officedocument.presentationml.presentation'}, body:blob});
+    if (r.status === 423) throw {code:'net', message:'Die Datei ist gerade geöffnet. Bitte in PowerPoint schließen und erneut versuchen.'};
+    if (!r.ok) throw {code:'net', message:`Hochladen fehlgeschlagen (HTTP ${r.status}).`};
+    const j = await r.json().catch(() => ({}));
+    const fo = await gGet(ordner).catch(() => null);
+    await patch('angebote', a.id, {ordner, ordnerUrl: fo && fo.webUrl || '', dokument:{pfad:`${ordner}/${file}`, webUrl:j.webUrl||'', erstellt:new Date().toISOString()}});
+    toast(`Abgelegt: ${file}`);
+    if (editing && editing.col==='angebote' && editing.id===a.id) openForm('angebote', a.id);
+  } catch(e) {
+    if (e && e.code === 'auth') toast('Bitte erneut bei Microsoft anmelden.');
+    else toast('Ablage nicht möglich: ' + (e && e.message || e));
+  } finally { ablageLauf = false; }
+}
+
 /* ---------- flows ---------- */
 async function ang2proj(a){
   const pt = (a.positionen||[]).filter(x=>x.einheit==='PT');
@@ -864,7 +1103,7 @@ function ang2rech(a){
   openForm('rechnungen', null, {titel:a.titel, firmaId:a.firmaId, kontaktId:a.kontaktId, projektId:p?p.id:'', sprache:a.sprache||'DE', positionen:clone(a.positionen||[]), ustSatz:a.ustSatz??19});
 }
 function ch2ang(c){
-  openForm('angebote', null, {titel:c.titel, firmaId:c.firmaId, kontaktId:c.kontaktId, chanceId:c.id, positionen:[{text:'Beratungsleistung',menge:Number(SET.tagessatz)&&c.volumen?Math.round(c.volumen/Number(SET.tagessatz)):1,einheit:'PT',preis:Number(SET.tagessatz)||0}]},
+  openForm('angebote', null, {titel:c.titel, kurztitel:c.titel, firmaId:c.firmaId, kontaktId:c.kontaktId, chanceId:c.id, positionen:[{text:'Beratungsleistung',menge:Number(SET.tagessatz)&&c.volumen?Math.round(c.volumen/Number(SET.tagessatz)):1,einheit:'PT',preis:Number(SET.tagessatz)||0}]},
     async () => { if (['Lead','Erstgespräch'].includes(c.phase||'Lead')) await patch('chancen', c.id, {phase:'Angebot'}); });
 }
 function proj2rech(p){
@@ -924,7 +1163,7 @@ const ACT = {
   del: el => { if (armed !== el) { armed = el; el.classList.add('arm'); el.textContent = 'Wirklich löschen?'; return; } armed = null; const {col,id} = editing; remove(col,id); toast(`${ENT[col].one} gelöscht`); if (detail && detail.id===id) detail = null; closeModal(); },
   'pos-add': () => { $('#posbody').insertAdjacentHTML('beforeend', posRow({text:'',menge:1,einheit:'PT',preis:Number(SET.tagessatz)||0})); updPos(); },
   'pos-del': el => { el.closest('tr').remove(); updPos(); },
-  phase: el => { const c = byId('chancen', el.dataset.id); if (!c) return; const i = Math.max(0, Math.min(PHASEN.length-1, PHASEN.indexOf(c.phase||'Lead') + Number(el.dataset.dir))); patch('chancen', c.id, {phase:PHASEN[i], ...(PHASEN[i]==='Gewonnen'?{wahrscheinlichkeit:100}:PHASEN[i]==='Verloren'?{wahrscheinlichkeit:0}:{})}); },
+  phase: el => { const c = byId('chancen', el.dataset.id); if (!c) return; const i = Math.max(0, Math.min(PHASEN.length-1, PHASEN.indexOf(c.phase||'Lead') + Number(el.dataset.dir))); const was = c.phase; patch('chancen', c.id, {phase:PHASEN[i], ...(PHASEN[i]==='Gewonnen'?{wahrscheinlichkeit:100}:PHASEN[i]==='Verloren'?{wahrscheinlichkeit:0}:{})}); if (was!=='Angebot') onPhase(byId('chancen', c.id)); },
   toggle: el => { patch('aufgaben', el.dataset.id, {erledigt: el.checked}); },
   docview: async () => { const {col,id} = editing; const nid = await saveForm(); if (nid) { await new Promise(r=>setTimeout(r,80)); openDoc(col, nid||id); } },
   docdl: el => { const col = el.dataset.col, r = byId(col, el.dataset.id); if (!r) return; save_(`${ENT[col].one}-${(r.nummer||'entwurf').replace(/[^\w.-]+/g,'_')}.html`, docFile(col, r), `Dokumente/${ENT[col].label}`); },
@@ -937,6 +1176,11 @@ const ACT = {
   'ms-setup-save': () => { const id = $('#ms_client').value.trim(); if (!/^[0-9a-f-]{36}$/i.test(id)) { toast('Bitte eine gültige Anwendungs-ID eingeben.'); return; } lsSet('wk-ms-client', id); lsSet('wk-ms-tenant', $('#ms_tenant').value.trim() || null); lsSet('wk-ms-path', $('#ms_path').value.trim() || null); msLogin(); },
   grant: () => grantFolder(),
   reload: () => loadData(),
+  'ang-doc': async () => { const id = editing.id; const nid = await saveForm(); if (nid) angebotAblage(nid || id); },
+  'ang-ver': async () => { const id = editing.id; const a = byId('angebote', id); if (a) neueVersion(a); },
+  'r-storno': () => { const r = byId('rechnungen', editing.id); if (r) stornieren(r); },
+  'r-korr': () => { const r = byId('rechnungen', editing.id); if (r) korrektur(r); },
+  akte: async el => { if (!needGraph()) return; const f = byId('firmen', el.dataset.id); if (!f) return; try { toast('Kundenakte wird angelegt …'); await ensureAkte(f); toast('Kundenakte angelegt'); } catch(e) { toast('Kundenakte nicht möglich: ' + (e && e.message || e)); } },
   ang2proj: async () => { const id = editing.id; const nid = await saveForm(); const a = byId('angebote', nid||id); if (a) ang2proj(a); },
   ang2rech: async () => { const id = editing.id; const nid = await saveForm(); const a = byId('angebote', nid||id); if (a) ang2rech(a); },
   ch2ang: async () => { const id = editing.id; const nid = await saveForm(); const c = byId('chancen', nid||id); if (c) ch2ang(c); },
@@ -974,7 +1218,7 @@ let dragId = null;
 document.addEventListener('dragstart', e => { const c = e.target.closest && e.target.closest('.kcard'); if (c) { dragId = c.dataset.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', dragId); } catch(x){} } });
 document.addEventListener('dragover', e => { const col = e.target.closest && e.target.closest('.kcol'); if (col && dragId) { e.preventDefault(); $$('.kcol.over').forEach(x=>x!==col&&x.classList.remove('over')); col.classList.add('over'); } });
 document.addEventListener('dragleave', e => { const col = e.target.closest && e.target.closest('.kcol'); if (col && !col.contains(e.relatedTarget)) col.classList.remove('over'); });
-document.addEventListener('drop', e => { const col = e.target.closest && e.target.closest('.kcol'); if (col && dragId) { e.preventDefault(); col.classList.remove('over'); const ph = col.dataset.phase; patch('chancen', dragId, {phase:ph, ...(ph==='Gewonnen'?{wahrscheinlichkeit:100}:ph==='Verloren'?{wahrscheinlichkeit:0}:{})}); dragId = null; } });
+document.addEventListener('drop', e => { const col = e.target.closest && e.target.closest('.kcol'); if (col && dragId) { e.preventDefault(); col.classList.remove('over'); const ph = col.dataset.phase; const cid = dragId; const was = (byId('chancen', cid)||{}).phase; patch('chancen', cid, {phase:ph, ...(ph==='Gewonnen'?{wahrscheinlichkeit:100}:ph==='Verloren'?{wahrscheinlichkeit:0}:{})}); dragId = null; if (was!=='Angebot') onPhase(byId('chancen', cid)); } });
 document.addEventListener('dragend', () => { dragId = null; $$('.kcol.over').forEach(x=>x.classList.remove('over')); });
 
 let tt = null;
