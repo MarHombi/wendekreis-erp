@@ -140,7 +140,18 @@ textarea{resize:vertical}
 .dlg-h{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--line);gap:8px}
 .dlg-h h2{margin:0;font-size:17px}
 .dlg-b{padding:18px 20px}
-.dlg-f{display:flex;gap:8px;justify-content:flex-end;padding:14px 20px;border-top:1px solid var(--line);flex-wrap:wrap}
+.dlg-f{display:flex;flex-direction:column;gap:12px;padding:12px 20px 14px;border-top:1px solid var(--line)}
+.mainrow{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.mainrow .sp{flex:1}
+.acts summary{cursor:pointer;font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-2);list-style:none;display:inline-flex;align-items:center;gap:6px}
+.acts summary::-webkit-details-marker{display:none}
+.acts summary::after{content:'▾';font-size:11px;transition:transform .15s}
+.acts:not([open]) summary::after{transform:rotate(-90deg)}
+.acts-in{display:flex;flex-wrap:wrap;gap:10px 28px;padding-top:10px}
+.ag{display:flex;flex-direction:column;gap:5px;min-width:0}
+.agl{font-size:11px;color:var(--ink-2)}
+.agb{display:flex;gap:6px;flex-wrap:wrap}
+.agb .btn{padding:6px 11px;font-size:13px;font-weight:500;text-decoration:none}
 .dlg-f .sp{flex:1}
 .form{display:grid;grid-template-columns:1fr 1fr;gap:12px 14px}
 .fld{display:flex;flex-direction:column;gap:4px;grid-column:span 2;min-width:0}
@@ -196,7 +207,13 @@ textarea{resize:vertical}
   .form{grid-template-columns:1fr}
   .fld,.fld.half{grid-column:span 1}
   input[type=text],input[type=number],input[type=date],input[type=email],input[type=url],input[type=search],select,textarea{font-size:16px}
-  .modal{padding:0;align-items:stretch}
+  .modal{padding:0;align-items:flex-start;background:var(--surface)}
+  body:has(#modal:not([hidden])){overflow:hidden}
+  .acts-in{display:grid;grid-template-columns:1fr;gap:12px}
+  .agb{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  .agb .btn{padding:10px 8px;text-align:center}
+  .mainrow .btn{flex:1 1 0}
+  .mainrow .sp{display:none}
   .dlg,.dlg.wide{max-width:none;border-radius:0;min-height:100%}
   .dlg-h{position:sticky;top:0;background:var(--surface);z-index:2;padding-top:calc(14px + env(safe-area-inset-top,0px))}
   .dlg-f{position:sticky;bottom:0;background:var(--surface);padding-bottom:calc(14px + env(safe-area-inset-bottom,0px))}
@@ -317,7 +334,7 @@ const ENT = {
   angebote:{label:'Angebote',one:'Angebot',title:r=>`${r.nummer||''} ${r.titel||''}`.trim(),sort:(a,b)=>(b.datum||'').localeCompare(a.datum||'')||(b.nummer||'').localeCompare(a.nummer||''),
     fields:[F('nummer','Angebotsnummer',{half:1}),F('status','Status',{t:'select',o:['Entwurf','Versendet','Angenommen','Abgelehnt','Abgelaufen','Ersetzt'],half:1,def:'Entwurf'}),F('titel','Titel / Betreff',{req:1}),F('kurztitel','Kurztitel für Ordner und Dateiname',{ph:'z. B. Repositionierung ELU'}),F('aenderungsgrund','Änderungsgrund dieser Version',{show:r=>angVer(r)>0}),
       F('firmaId','Firma',{t:'ref',ref:'firmen',half:1}),F('kontaktId','Ansprechpartner',{t:'ref',ref:'kontakte',half:1}),F('chanceId','Verkaufschance',{t:'ref',ref:'chancen',half:1}),F('sprache','Sprache',{t:'select',o:['DE','EN'],half:1,def:'DE'}),
-      F('datum','Datum',{t:'date',half:1,def:'today'}),F('gueltigBis','Gültig bis',{t:'date',half:1,def:'+30'}),F('einleitung','Einleitungstext',{t:'textarea',rows:3}),F('positionen','Positionen',{t:'positions'}),
+      F('datum','Datum',{t:'date',half:1,def:'today'}),F('gueltigBis','Gültig bis',{t:'date',half:1,def:'+30'}),F('projektStart','Projektstart',{t:'date',half:1}),F('projektEnde','Projektende',{t:'date',half:1}),F('einleitung','Einleitungstext',{t:'textarea',rows:3}),F('positionen','Positionen',{t:'positions'}),
       F('ustSatz','USt-Satz %',{t:'select',o:['19','7','0'],half:1,def:'19',num:1}),F('schluss','Schlusstext / Konditionen',{t:'textarea',rows:3}),F('notizen','Interne Notizen',{t:'textarea',rows:2})],
     cols:[['Nr.',r=>esc(r.nummer)],['Titel',r=>`<strong>${esc(r.titel)}</strong>${ex(r)}${angVersions(r).length>1?` <span class="muted">· ${angVersions(r).length} Versionen</span>`:''}`],['Firma',r=>esc(fname(r.firmaId))],['Datum',r=>fmtD(r.datum)],['Status',r=>sChip(r.status)],['Netto',r=>eur(tot(r).netto),1]],
     filters:['Entwurf','Versendet','Angenommen','Abgelehnt','Abgelaufen','Ersetzt'], fkey:'status'},
@@ -616,18 +633,21 @@ function openForm(col, id, preset={}, after=null){
   if (!id && preset && preset.firmaId && (col==='angebote'||col==='rechnungen')) { const f = byId('firmen',preset.firmaId); if (f && f.sprache) base.sprache = f.sprache; if (col==='angebote' && f && f.sprache==='EN') { base.einleitung = SET.einleitungEN||base.einleitung; base.schluss = SET.schlussEN||base.schluss; } }
   const lock = id ? lockInfo(col, {...base, id}) : null;
   editing = {col, id, base, after, lock};
-  const extra = [];
-  if (id && col==='angebote' && base.ordnerUrl) extra.push(`<a class="btn ghost" href="${esc(base.ordnerUrl)}" target="_blank" rel="noopener">Angebotsordner öffnen</a>`);
-  if (id && col==='angebote' && base.dokument && base.dokument.webUrl) extra.push(`<a class="btn ghost" href="${esc(base.dokument.webUrl)}" target="_blank" rel="noopener">PowerPoint öffnen</a>`);
-  if (id && col==='angebote' && base.status!=='Ersetzt') extra.push(`<button class="btn ghost" data-act="ang-doc">${base.dokument?'Dokument neu erzeugen':'Dokument erzeugen'}</button><button class="btn ghost" data-act="ang-ver">Neue Version</button>`);
-  if (id && col==='rechnungen' && rArt(base)==='rechnung' && ['Gestellt','Bezahlt'].includes(base.status)) extra.push(`<button class="btn ghost" data-act="r-korr">Korrektur</button><button class="btn ghost" data-act="r-storno">Stornieren</button>`);
-  if (id && (col==='angebote'||col==='rechnungen')) extra.push(`<button class="btn ghost" data-act="docview">Dokument ansehen</button>`);
-  if (id && col==='angebote') extra.push(`<button class="btn ghost" data-act="ang2proj">Projekt anlegen</button><button class="btn ghost" data-act="ang2rech">Rechnung erstellen</button>`);
-  if (id && col==='chancen') extra.push(`<button class="btn ghost" data-act="ch2ang">Angebot erstellen</button>`);
-  if (id && col==='kontakte') extra.push(`<button class="btn ghost" data-act="k2akt">Aktivität erfassen</button>`);
+  const extra = []; const X = (g, h) => extra.push({g, h});
+  if (id && (col==='angebote'||col==='rechnungen')) X('Dokument', `<button class="btn ghost" data-act="docview">Vorschau</button>`);
+  if (id && col==='angebote' && base.dokument && base.dokument.webUrl) X('Dokument', `<a class="btn ghost" href="${esc(base.dokument.webUrl)}" target="_blank" rel="noopener">PowerPoint öffnen</a>`);
+  if (id && col==='angebote' && base.ordnerUrl) X('Dokument', `<a class="btn ghost" href="${esc(base.ordnerUrl)}" target="_blank" rel="noopener">Ordner öffnen</a>`);
+  if (id && col==='angebote' && base.status!=='Ersetzt') X('Dokument', `<button class="btn ghost" data-act="ang-doc">${base.dokument?'PowerPoint neu erzeugen':'PowerPoint erzeugen'}</button>`);
+  if (id && col==='angebote' && base.status!=='Ersetzt') X('Angebot', `<button class="btn ghost" data-act="ang-ver">Neue Version</button>`);
+  if (id && col==='angebote') X('Weiter mit', `<button class="btn ghost" data-act="ang2proj">Projekt anlegen</button><button class="btn ghost" data-act="ang2rech">Rechnung erstellen</button>`);
+  if (id && col==='rechnungen' && rArt(base)==='rechnung' && ['Gestellt','Bezahlt'].includes(base.status)) X('Rechnung ändern', `<button class="btn ghost" data-act="r-korr">Korrektur</button><button class="btn ghost" data-act="r-storno">Stornieren</button>`);
+  if (id && col==='chancen') X('Weiter mit', `<button class="btn ghost" data-act="ch2ang">Angebot erstellen</button>`);
+  if (id && col==='kontakte') X('Weiter mit', `<button class="btn ghost" data-act="k2akt">Aktivität erfassen</button>`);
+  const groups = {}; extra.forEach(x => (groups[x.g] = groups[x.g] || []).push(x.h));
+  const actsHtml = extra.length ? `<details class="acts"${innerWidth > 820 ? ' open' : ''}><summary>Aktionen</summary><div class="acts-in">${Object.entries(groups).map(([g, hs]) => `<div class="ag"><span class="agl">${esc(g)}</span><div class="agb">${hs.join('')}</div></div>`).join('')}</div></details>` : '';
   $('#modal').innerHTML = `<div class="dlg${col==='angebote'||col==='rechnungen'?' wide':''}" role="dialog" aria-modal="true" aria-labelledby="dlgt"><div class="dlg-h"><h2 id="dlgt">${id?esc(E.title(base)):'Neu: '+E.one}${ex(base)}</h2><button class="icon-btn" data-act="close" aria-label="Schließen">×</button></div>
     <form class="dlg-b" id="frm">${lock?`<div class="banner lockinfo">${esc(lock.msg)}</div>`:''}${id&&col==='angebote'?versionsHtml(base, id)+ablageHtml(base):''}${id&&col==='rechnungen'?bezugHtml(base, id):''}<div class="form">${E.fields.filter(f=>!f.show||f.show(base)).map(f=>fieldHtml(f, base[f.k])).join('')}</div></form>
-    <div class="dlg-f">${id&&!lock?`<button class="btn danger" data-act="del">Löschen</button>`:''}${extra.join('')}<span class="sp"></span><button class="btn ghost" data-act="close">${lock&&lock.keys.size<2?'Schließen':'Abbrechen'}</button>${lock&&lock.keys.size<2&&col==='angebote'?'':`<button class="btn" data-act="save">Speichern</button>`}</div></div>`;
+    <div class="dlg-f">${actsHtml}<div class="mainrow">${id&&!lock?`<button class="btn danger" data-act="del">Löschen</button>`:''}<span class="sp"></span><button class="btn ghost" data-act="close">${lock&&lock.keys.size<2?'Schließen':'Abbrechen'}</button>${lock&&lock.keys.size<2&&col==='angebote'?'':`<button class="btn" data-act="save">Speichern</button>`}</div></div></div>`;
   $('#modal').hidden = false; updPos();
   if (lock) $$('#frm input,#frm select,#frm textarea,#frm button').forEach(el => { const k = (el.id||'').replace(/^f_/,''); if (!lock.keys.has(k)) el.disabled = true; });
   const first = $('#frm input:not([type=checkbox]),#frm select,#frm textarea'); if (first && !id) first.focus();
@@ -643,6 +663,7 @@ async function saveForm(){
     if (rArt(data)!=='rechnung' && !String(data.grund||'').trim()) { toast('Bitte den Grund angeben.'); return null; }
     if (rArt(data)==='korrektur' && !(tot(data).netto < 0)) { toast('Korrekturbeträge bitte negativ eingeben, z. B. Nachlass -500.'); return null; }
   }
+  if (col==='angebote' && data.projektStart && data.projektEnde && data.projektEnde < data.projektStart) { toast('Das Projektende liegt vor dem Projektstart.'); return null; }
   if (col==='angebote' && data.status==='Ersetzt' && base.status!=='Ersetzt') { toast('„Ersetzt“ setzt die App selbst, wenn du eine neue Version anlegst.'); return null; }
   if ((col==='angebote'||col==='rechnungen') && data.nummer) {
     if (S[col].some(r => r.id!==id && r.nummer===data.nummer)) {
@@ -858,8 +879,8 @@ const DOC_CSS = `.paper{background:#fff;color:#2e3a3f;font-family:"Aptos","Segoe
 .paper .ft{margin-top:auto;padding-top:8mm;border-top:1px solid #8fb8b3;font-size:7.5pt;color:#6b7a80;display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .paper .ft b{color:#0f2b36;font-weight:600}`;
 const LBL = {
-  DE:{angebote:'Angebot',rechnungen:'Rechnung',storno:'Stornorechnung',korrektur:'Rechnungskorrektur',bezug:'Bezug',bezugTxt:(n,d)=>`Rechnung ${n} vom ${d}`,stornoTxt:'Hiermit stornieren wir die oben genannte Rechnung vollständig.',korrTxt:'Hiermit korrigieren wir die oben genannte Rechnung wie folgt. Der Betrag wird mit Ihrer Zahlung verrechnet bzw. erstattet.',grund:'Grund',nr:{angebote:'Angebots-Nr.',rechnungen:'Rechnungs-Nr.'},datum:'Datum',gueltig:'Gültig bis',faellig:'Zahlbar bis',leistung:'Leistungszeitraum',po:'Ihre Bestellung',kustid:'Ihre USt-IdNr.',pos:'Pos.',besch:'Beschreibung',menge:'Menge',ep:'Einzelpreis',gesamt:'Gesamt',netto:'Summe netto',ust:'USt',brutto:'Gesamtbetrag',hallo:n=>n?`Guten Tag ${n},`:'Sehr geehrte Damen und Herren,',zahl:(d,nr)=>`Bitte überweisen Sie den Gesamtbetrag bis zum ${d} unter Angabe der Rechnungsnummer ${nr}.`,danke:'Vielen Dank für die vertrauensvolle Zusammenarbeit.',gruss:'Mit freundlichen Grüßen',bank:'Bank',steuer:'Steuernr.',ustid:'USt-IdNr.',u:{PT:'PT',Std:'Std.',Pauschal:'pauschal',Stk:'Stk.',km:'km'}},
-  EN:{angebote:'Proposal',rechnungen:'Invoice',storno:'Cancellation invoice',korrektur:'Invoice correction',bezug:'Reference',bezugTxt:(n,d)=>`Invoice ${n} dated ${d}`,stornoTxt:'We hereby cancel the above invoice in full.',korrTxt:'We hereby correct the above invoice as follows. The amount will be offset against your payment or refunded.',grund:'Reason',nr:{angebote:'Proposal no.',rechnungen:'Invoice no.'},datum:'Date',gueltig:'Valid until',faellig:'Due date',leistung:'Service period',po:'Your PO',kustid:'Your VAT ID',pos:'No.',besch:'Description',menge:'Qty',ep:'Unit price',gesamt:'Amount',netto:'Subtotal',ust:'VAT',brutto:'Total',hallo:n=>n?`Dear ${n},`:'Dear Sir or Madam,',zahl:(d,nr)=>`Please transfer the total amount by ${d}, quoting invoice number ${nr}.`,danke:'Thank you for your trust and the good cooperation.',gruss:'Kind regards',bank:'Bank',steuer:'Tax no.',ustid:'VAT ID',u:{PT:'days',Std:'hrs',Pauschal:'lump sum',Stk:'pcs',km:'km'}}
+  DE:{laufzeit:'Projektlaufzeit',angebote:'Angebot',rechnungen:'Rechnung',storno:'Stornorechnung',korrektur:'Rechnungskorrektur',bezug:'Bezug',bezugTxt:(n,d)=>`Rechnung ${n} vom ${d}`,stornoTxt:'Hiermit stornieren wir die oben genannte Rechnung vollständig.',korrTxt:'Hiermit korrigieren wir die oben genannte Rechnung wie folgt. Der Betrag wird mit Ihrer Zahlung verrechnet bzw. erstattet.',grund:'Grund',nr:{angebote:'Angebots-Nr.',rechnungen:'Rechnungs-Nr.'},datum:'Datum',gueltig:'Gültig bis',faellig:'Zahlbar bis',leistung:'Leistungszeitraum',po:'Ihre Bestellung',kustid:'Ihre USt-IdNr.',pos:'Pos.',besch:'Beschreibung',menge:'Menge',ep:'Einzelpreis',gesamt:'Gesamt',netto:'Summe netto',ust:'USt',brutto:'Gesamtbetrag',hallo:n=>n?`Guten Tag ${n},`:'Sehr geehrte Damen und Herren,',zahl:(d,nr)=>`Bitte überweisen Sie den Gesamtbetrag bis zum ${d} unter Angabe der Rechnungsnummer ${nr}.`,danke:'Vielen Dank für die vertrauensvolle Zusammenarbeit.',gruss:'Mit freundlichen Grüßen',bank:'Bank',steuer:'Steuernr.',ustid:'USt-IdNr.',u:{PT:'PT',Std:'Std.',Pauschal:'pauschal',Stk:'Stk.',km:'km'}},
+  EN:{laufzeit:'Project period',angebote:'Proposal',rechnungen:'Invoice',storno:'Cancellation invoice',korrektur:'Invoice correction',bezug:'Reference',bezugTxt:(n,d)=>`Invoice ${n} dated ${d}`,stornoTxt:'We hereby cancel the above invoice in full.',korrTxt:'We hereby correct the above invoice as follows. The amount will be offset against your payment or refunded.',grund:'Reason',nr:{angebote:'Proposal no.',rechnungen:'Invoice no.'},datum:'Date',gueltig:'Valid until',faellig:'Due date',leistung:'Service period',po:'Your PO',kustid:'Your VAT ID',pos:'No.',besch:'Description',menge:'Qty',ep:'Unit price',gesamt:'Amount',netto:'Subtotal',ust:'VAT',brutto:'Total',hallo:n=>n?`Dear ${n},`:'Dear Sir or Madam,',zahl:(d,nr)=>`Please transfer the total amount by ${d}, quoting invoice number ${nr}.`,danke:'Thank you for your trust and the good cooperation.',gruss:'Kind regards',bank:'Bank',steuer:'Tax no.',ustid:'VAT ID',u:{PT:'days',Std:'hrs',Pauschal:'lump sum',Stk:'pcs',km:'km'}}
 };
 function docHtml(col, r){
   const f = byId('firmen', r.firmaId) || {}; const k = byId('kontakte', r.kontaktId); const p = byId('projekte', r.projektId);
@@ -872,6 +893,7 @@ function docHtml(col, r){
   const addr = [f.name, k?kname(k):'', f.strasse, [f.plz,f.ort].filter(Boolean).join(' '), f.land && f.land!=='Deutschland' ? f.land : ''].filter(Boolean).join('\n');
   const meta = [[L.nr[col], r.nummer],[L.datum, d(r.datum)]];
   if (col==='angebote' && r.gueltigBis) meta.push([L.gueltig, d(r.gueltigBis)]);
+  if (col==='angebote' && (r.projektStart||r.projektEnde)) meta.push([L.laufzeit, `${d(r.projektStart)}${r.projektEnde?' – '+d(r.projektEnde):''}`]);
   if (col==='rechnungen' && (r.leistungVon||r.leistungBis)) meta.push([L.leistung, `${d(r.leistungVon)}${r.leistungBis?' – '+d(r.leistungBis):''}`]);
   if (col==='rechnungen' && p && p.poNummer) meta.push([L.po, p.poNummer]);
   if (col==='rechnungen' && f.ustid) meta.push([L.kustid, f.ustid]);
@@ -895,7 +917,7 @@ function docHtml(col, r){
 function esc2(s){ return s.startsWith('<b>') ? s : esc(s); }
 function openDoc(col, id){
   const r = byId(col, id); if (!r) return;
-  $('#modal').innerHTML = `<div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="dlgt"><div class="dlg-h"><h2 id="dlgt">${esc(ENT[col].one)} ${esc(r.nummer||'')}</h2><button class="icon-btn" data-act="close" aria-label="Schließen">×</button></div><div class="dlg-b"><div class="doc-wrap">${docHtml(col,r)}</div></div><div class="dlg-f"><span class="muted" style="align-self:center;font-size:12.5px">Drucken öffnet den Druckdialog, dort „Als PDF speichern“ wählen.</span><span class="sp"></span><button class="btn ghost" data-act="edit" data-col="${col}" data-id="${id}">Bearbeiten</button><button class="btn ghost" data-act="docdl" data-col="${col}" data-id="${id}">Im Ordner ablegen</button><button class="btn" data-act="docprint" data-col="${col}" data-id="${id}">Drucken / PDF</button></div></div>`;
+  $('#modal').innerHTML = `<div class="dlg wide" role="dialog" aria-modal="true" aria-labelledby="dlgt"><div class="dlg-h"><h2 id="dlgt">${esc(ENT[col].one)} ${esc(r.nummer||'')}</h2><button class="icon-btn" data-act="close" aria-label="Schließen">×</button></div><div class="dlg-b"><div class="doc-wrap">${docHtml(col,r)}</div></div><div class="dlg-f"><div class="mainrow"><span class="muted" style="font-size:12.5px">Drucken öffnet den Druckdialog, dort „Als PDF speichern“ wählen.</span><span class="sp"></span><button class="btn ghost" data-act="edit" data-col="${col}" data-id="${id}">Bearbeiten</button><button class="btn ghost" data-act="docdl" data-col="${col}" data-id="${id}">Im Ordner ablegen</button><button class="btn" data-act="docprint" data-col="${col}" data-id="${id}">Drucken / PDF</button></div></div></div>`;
   $('#modal').hidden = false;
 }
 function docFile(col, r){ return `<!doctype html><html lang="${r.sprache==='EN'?'en':'de'}"><head><meta charset="utf-8"><title>${esc(ENT[col].one)} ${esc(r.nummer||'')}</title><style>body{margin:0;background:#ebe6de}@media print{body{background:#fff}.paper{padding:12mm 16mm;min-height:auto}}@page{size:A4;margin:0}${DOC_CSS}</style></head><body>${docHtml(col, r)}</body></html>`; }
@@ -909,7 +931,7 @@ async function save_(filename, data, sub='Export'){
 function ask({title, html, ok='OK', cancel='Abbrechen', read, validate}){
   return new Promise(res => {
     const el = $('#ask');
-    el.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="askt"><div class="dlg-h"><h2 id="askt">${esc(title)}</h2></div><div class="dlg-b">${html}</div><div class="dlg-f"><span class="sp"></span><button type="button" class="btn ghost" id="ask_no">${esc(cancel)}</button><button type="button" class="btn" id="ask_ok">${esc(ok)}</button></div></div>`;
+    el.innerHTML = `<div class="dlg" role="dialog" aria-modal="true" aria-labelledby="askt"><div class="dlg-h"><h2 id="askt">${esc(title)}</h2></div><div class="dlg-b">${html}</div><div class="dlg-f"><div class="mainrow"><span class="sp"></span><button type="button" class="btn ghost" id="ask_no">${esc(cancel)}</button><button type="button" class="btn" id="ask_ok">${esc(ok)}</button></div></div></div>`;
     el.hidden = false;
     const done = v => { el.hidden = true; el.innerHTML = ''; res(v); };
     $('#ask_no').onclick = () => done(null);
@@ -1016,7 +1038,7 @@ function pptCtx(a){
   const n = x => (Number(x)||0).toLocaleString('de-DE', {maximumFractionDigits: (Number(x)||0) % 1 ? 2 : 0});
   const pos = (a.positionen||[]).filter(p => p.text || p.preis);
   const tage = pos.filter(p => p.einheit==='PT').reduce((s,p) => s + (Number(p.menge)||0), 0);
-  return {kunde:f.name||'', nummer:a.nummer||'', titel:a.titel||'', kurz:a.kurztitel||a.titel||'', datum:fmtD(a.datum), gueltig:fmtD(a.gueltigBis), netto:n(tot(a).netto), tage: tage ? n(tage) : '', telefon:SET.telefon||'', web:SET.web||'www.wendekreis.eu', kontakt: k ? [kname(k), k.rolle].filter(Boolean).join(', ') : '', pos: pos.map(p => ({name:String(p.text||'').split('\n')[0], menge:n(p.menge), preis:n(p.preis)+' €', betrag:n((Number(p.menge)||0)*(Number(p.preis)||0))+' €'})), n};
+  return {kunde:f.name||'', nummer:a.nummer||'', titel:a.titel||'', kurz:a.kurztitel||a.titel||'', start:fmtD(a.projektStart), ende:fmtD(a.projektEnde), datum:fmtD(a.datum), gueltig:fmtD(a.gueltigBis), netto:n(tot(a).netto), tage: tage ? n(tage) : '', telefon:SET.telefon||'', web:SET.web||'www.wendekreis.eu', kontakt: k ? [kname(k), k.rolle].filter(Boolean).join(', ') : '', pos: pos.map(p => ({name:String(p.text||'').split('\n')[0], menge:n(p.menge), preis:n(p.preis)+' €', betrag:n((Number(p.menge)||0)*(Number(p.preis)||0))+' €'})), n};
 }
 function fillSlide(xml, c){
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -1030,6 +1052,7 @@ function fillSlide(xml, c){
     if (v.includes('Angebot WK-[')) v = v.replace(/WK-\[JJ\]-\[NNN\]-v\d+/, c.nummer).replace(/Anfrage \[Nr\.\]\s*·\s*/, '').replace('[TT.MM.JJJJ]', c.datum);
     if (/^WK-JJ-NNN-vX\s+·\s+Angebotstitel kurz\s+·\s+TT\.MM\.JJJJ$/.test(v)) v = `${c.nummer}  ·  ${c.kurz}  ·  ${c.datum}`;
     if (c.kunde) v = v.split('[Kunde]').join(c.kunde);
+    if (prev === 'Zeitraum' && v === '[TT.MM.JJJJ] – [TT.MM.JJJJ]' && (c.start || c.ende)) v = `${c.start || '[TT.MM.JJJJ]'} – ${c.ende || '[TT.MM.JJJJ]'}`;
     if (prev === 'Gültig bis' && v === '[TT.MM.JJJJ]' && c.gueltig) v = c.gueltig;
     if (v === 'bis [TT.MM.JJJJ]' && c.gueltig) v = `bis ${c.gueltig}`;
     if (prev === 'Aufwand' && v === '[xx] Beratertage' && c.tage) v = `${c.tage} Beratertage`;
@@ -1090,7 +1113,7 @@ async function angebotAblage(id){
 /* ---------- flows ---------- */
 async function ang2proj(a){
   const pt = (a.positionen||[]).filter(x=>x.einheit==='PT');
-  const preset = {name:a.titel, firmaId:a.firmaId, angebotId:a.id, status:'Geplant', abrechnung: pt.length ? 'Nach Aufwand' : 'Festpreis', tagessatz: pt.length ? Number(pt[0].preis)||null : (Number(SET.tagessatz)||null), budgetTage: pt.reduce((s,x)=>s+(Number(x.menge)||0),0)||null, budgetEuro: tot(a).netto||null, start: today()};
+  const preset = {name:a.titel, firmaId:a.firmaId, angebotId:a.id, status:'Geplant', abrechnung: pt.length ? 'Nach Aufwand' : 'Festpreis', tagessatz: pt.length ? Number(pt[0].preis)||null : (Number(SET.tagessatz)||null), budgetTage: pt.reduce((s,x)=>s+(Number(x.menge)||0),0)||null, budgetEuro: tot(a).netto||null, start: a.projektStart || today(), ende: a.projektEnde || ''};
   openForm('projekte', null, preset, async (pid) => {
     await patch('angebote', a.id, {status:'Angenommen'});
     if (a.chanceId && byId('chancen',a.chanceId)) await patch('chancen', a.chanceId, {phase:'Gewonnen', wahrscheinlichkeit:100});
