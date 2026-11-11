@@ -681,6 +681,7 @@ async function saveForm(){
   editing = null; $('#modal').hidden = true; $('#modal').innerHTML = '';
   toast(`${E.one} gespeichert`);
   if (after) await after(newId, data);
+  if (col==='angebote' || col==='projekte') syncPipeline();
   render();
   if (col==='chancen' && data.phase==='Angebot' && base.phase!=='Angebot') setTimeout(() => onPhase(byId('chancen', newId)), 60);
   if (col==='angebote' && store && store.kind==='graph') { const a = byId('angebote', newId); if (a && !a.dokument && a.status!=='Ersetzt') angebotAblage(newId); }
@@ -851,7 +852,7 @@ async function loadData(){
     const text = await store.read();
     if (text != null) { const j = JSON.parse(text || '{}'); COLS.forEach(c => S[c] = (j.daten && j.daten[c]) || []); SET = j.einstellungen || {}; }
     else { COLS.forEach(c => S[c] = []); SET = {}; dirty = true; state = 'live'; await writeNow(); }
-    COLS.forEach(c => loaded.add(c)); state = 'live'; dirty = false; render();
+    COLS.forEach(c => loaded.add(c)); state = 'live'; dirty = false; render(); setTimeout(syncPipeline, 400);
   } catch(e) {
     if (e && e.code === 'auth') { store = null; state = 'signin'; dbError = 'Bitte melde dich erneut bei Microsoft an.'; render(); return; }
     state = 'live'; dbError = `Die Datei „${FILE}“ konnte nicht gelesen werden (${e && (e.message || e.code) || e}). Prüfe die Verbindung bzw. ob OneDrive sie vollständig synchronisiert hat.`; render();
@@ -1110,6 +1111,44 @@ async function angebotAblage(id){
   } finally { ablageLauf = false; }
 }
 
+
+/* ---------- Nr. 16: Pipeline automatisch nachziehen ---------- */
+const ANG2PH = {Entwurf:'Angebot',Versendet:'Angebot',Angenommen:'Gewonnen',Abgelehnt:'Verloren',Abgelaufen:'Verloren'};
+const PH2W = {Lead:10,'Erstgespräch':25,Angebot:50,Verhandlung:75,Gewonnen:100,Verloren:0};
+function mkChance(d){ const now = new Date().toISOString(); const c = {...d, wahrscheinlichkeit:PH2W[d.phase], auto:true, createdAt:now, updatedAt:now, id:newId()}; S.chancen.push(c); return c; }
+function syncPipeline(){
+  if (state !== 'live' || !store) return 0;
+  let n = 0, ch = false; const done = new Set();
+  for (const a of S.angebote) {
+    const st = angStamm(a); if (done.has(st)) continue; done.add(st);
+    const vs = angVersions(a); const cur = vs.filter(x=>x.status!=='Ersetzt').pop() || vs[vs.length-1];
+    let cid = (vs.find(x=>x.chanceId && byId('chancen',x.chanceId))||{}).chanceId;
+    if (!cid) {
+      const ph = ANG2PH[cur.status] || 'Angebot';
+      const c = mkChance({titel:cur.titel||cur.kurztitel||cur.nummer, firmaId:cur.firmaId||'', kontaktId:cur.kontaktId||'', phase:ph, volumen:tot(cur).netto||null,
+        abschluss: ph==='Angebot' ? (cur.gueltigBis||cur.datum||'') : (cur.datum||''), naechsterSchritt: ph==='Angebot' ? 'Angebot nachfassen' : '',
+        notizen:`Automatisch nachgetragen aus Angebot ${cur.nummer||''} (${fmtD(today())}).`});
+      cid = c.id; n++;
+    }
+    for (const v of vs) if (v.chanceId !== cid) { v.chanceId = cid; ch = true; }
+  }
+  for (const p of S.projekte) {
+    const a = p.angebotId && byId('angebote', p.angebotId);
+    let cid = (a && a.chanceId && byId('chancen',a.chanceId)) ? a.chanceId : (p.chanceId && byId('chancen',p.chanceId) ? p.chanceId : '');
+    if (!cid) {
+      const vol = Number(p.budgetEuro) || ((Number(p.tagessatz)||0)*(Number(p.budgetTage)||0)) || null;
+      const c = mkChance({titel:p.name, firmaId:p.firmaId||'', kontaktId:'', phase:'Gewonnen', volumen:vol, abschluss:p.start||String(p.createdAt||'').slice(0,10)||today(),
+        notizen:`Automatisch nachgetragen aus Projekt „${p.name||''}“ (${fmtD(today())}).`});
+      cid = c.id; n++;
+    }
+    if (p.chanceId !== cid) { p.chanceId = cid; ch = true; }
+    const c = byId('chancen', cid);
+    if (c && isOpen(c)) { c.phase = 'Gewonnen'; c.wahrscheinlichkeit = 100; c.updatedAt = new Date().toISOString(); ch = true; }
+  }
+  if (n || ch) persist();
+  if (n) toast(`Pipeline ergänzt: ${n} ${n===1?'Eintrag':'Einträge'} automatisch nachgetragen.`);
+  return n;
+}
 /* ---------- flows ---------- */
 async function ang2proj(a){
   const pt = (a.positionen||[]).filter(x=>x.einheit==='PT');
